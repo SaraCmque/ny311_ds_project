@@ -18,6 +18,7 @@ def get_s3_client():
         's3',
         aws_access_key_id=st.secrets["aws"]["access_key"],
         aws_secret_access_key=st.secrets["aws"]["secret_key"],
+        aws_session_token=st.secrets["aws"].get("session_token"),
         region_name=st.secrets["aws"]["region"]
     )
 
