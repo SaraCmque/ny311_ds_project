@@ -76,19 +76,35 @@ if df_metrics is not None:
     st.dataframe(df_metrics[cols_to_show], use_container_width=True)
 
     # --- VISUALIZACIONES ---
-    c1, c2 = st.columns(2)
+    c1, c2 = st.columns([0.6, 0.4]) # Ajustamos el ancho para darle más espacio al gráfico de barras
 
     with c1:
         st.subheader("📉 % de Nulidad por Campo")
+        
+        # Ordenamos los datos
+        df_nulos_sorted = df_metrics.sort_values("nulos_pct", ascending=True)
+        
+        # Calculamos una altura dinámica: 25 píxeles por cada columna 
+        # para asegurar que todas sean legibles.
+        altura_dinamica = len(df_nulos_sorted) * 25
+
         fig_nulos = px.bar(
-            df_metrics.sort_values("nulos_pct", ascending=False),
+            df_nulos_sorted,
             x="nulos_pct", 
             y="columna",
             orientation='h',
             color="nulos_pct",
             color_continuous_scale="Reds",
-            labels={"nulos_pct": "% Nulos", "columna": "Campo"}
+            labels={"nulos_pct": "% Nulos", "columna": "Campo"},
+            height=altura_dinamica # <--- Aplicamos la altura aquí
         )
+        
+        # Ajustes estéticos para que no se corten los nombres largos
+        fig_nulos.update_layout(
+            margin=dict(l=150), # Margen izquierdo extra para nombres de columnas
+            yaxis={'categoryorder':'total ascending'}
+        )
+        
         st.plotly_chart(fig_nulos, use_container_width=True)
 
     with c2:
