@@ -6,6 +6,39 @@ import io
 
 from eda_component import render_eda_section
 
+# Función para renderizar gráficas dinámicas con el dataset completo
+def render_visual_charts(df):
+    st.header("📈 Gráficas Dinámicas del Dataset Completo")
+    
+    if df is None or df.empty:
+        st.warning("No hay datos disponibles para las gráficas.")
+        return
+    
+    # Ejemplo de gráfica: distribución por agencia
+    if 'agency' in df.columns:
+        st.subheader("Distribución por Agencia")
+        agency_counts = df['agency'].value_counts().head(10)
+        fig = px.bar(agency_counts, x=agency_counts.index, y=agency_counts.values, 
+                     title="Top 10 Agencias por Número de Reportes")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Otra gráfica: por tipo de queja
+    if 'complaint type' in df.columns:
+        st.subheader("Distribución por Tipo de Queja")
+        complaint_counts = df['complaint type'].value_counts().head(10)
+        fig2 = px.pie(complaint_counts, values=complaint_counts.values, names=complaint_counts.index,
+                      title="Top 10 Tipos de Quejas")
+        st.plotly_chart(fig2, use_container_width=True)
+    
+    # Gráfica temporal si hay fechas
+    if 'created date' in df.columns:
+        st.subheader("Tendencia Temporal de Reportes")
+        df['created_date'] = pd.to_datetime(df['created date'], errors='coerce')
+        df_monthly = df.groupby(df['created_date'].dt.to_period('M')).size().reset_index(name='count')
+        df_monthly['created_date'] = df_monthly['created_date'].astype(str)
+        fig3 = px.line(df_monthly, x='created_date', y='count', title="Reportes por Mes")
+        st.plotly_chart(fig3, use_container_width=True)
+
 # 1. Configuración de la página
 st.set_page_config(page_title="NYC 311 Healthcheck", layout="wide")
 
