@@ -43,10 +43,10 @@ def render_dynamic_charts(df: pd.DataFrame):
     if date_col:
         st.subheader("Evolución Temporal de Incidentes")
         df_work[date_col] = pd.to_datetime(df_work[date_col], errors='coerce')
-        df_daily = df_work.groupby(df_work[date_col].dt.date).size().reset_index(name='Total')
+        df_daily = df_work.groupby(df_work[date_col].dt.date).size().reset_index()
+        df_daily.columns = ['Fecha', 'Total']
         
-        fig = px.line(df_daily, x=0, y='Total',
-                      labels={0: 'Fecha', 'Total': 'Número de Quejas'},
+        fig = px.line(df_daily, x='Fecha', y='Total',
                       title="Tendencia Diaria de Reportes")
         st.plotly_chart(fig, use_container_width=True)
 
