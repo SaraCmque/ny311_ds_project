@@ -24,17 +24,20 @@ def get_s3_client():
 # 3. Función para leer reportes
 @st.cache_data(ttl=3600)
 def load_report(prefix):
-    s3 = get_s3_client()
+    s3_client = get_s3_client()
     bucket = "proyecto-ny311"
     try:
-        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
         objects = response.get('Contents', [])
         csv_files = [obj['Key'] for obj in objects if obj['Key'].endswith('.csv')]
-        if not csv_files:
+        # Prefer actual part files from Spark output
+        part_files = [key for key in csv_files if 'part-' in key]
+        selected = part_files[0] if part_files else (csv_files[0] if csv_files else None)
+        if selected is None:
             return None
-        obj = s3.get_object(Bucket=bucket, Key=csv_files[0])
+        obj = s3_client.get_object(Bucket=bucket, Key=selected)
         return pd.read_csv(io.BytesIO(obj['Body'].read()))
-    except Exception as e:
+    except Exception:
         return None
 
 # --- UI PRINCIPAL ---
