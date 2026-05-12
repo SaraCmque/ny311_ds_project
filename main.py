@@ -35,8 +35,12 @@ def load_full_silver_data():
             
         obj = s3.get_object(Bucket=bucket, Key=files[0])
         
-        # Si es CSV (como parece ser tu caso por los 210k registros)
-        df = pd.read_csv(io.BytesIO(obj['Body'].read()))
+        # Determinar el tipo de archivo y usar el reader apropiado
+        if files[0].endswith('.parquet'):
+            df = pd.read_parquet(io.BytesIO(obj['Body'].read()))
+        else:
+            # Para archivos CSV
+            df = pd.read_csv(io.BytesIO(obj['Body'].read()))
         return df
     except Exception as e:
         st.error(f"Error cargando datos Silver: {e}")
