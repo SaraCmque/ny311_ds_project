@@ -14,10 +14,6 @@ def render_visual_charts(df):
         st.warning("No hay datos disponibles para las gráficas.")
         return
     
-    # Debug info
-    st.write("Debug: df shape", df.shape)
-    st.write("Debug: columns", df.columns.tolist())
-    
     # Ejemplo de gráfica: distribución por agencia
     agency_col = next((col for col in df.columns if 'agency' in col.lower()), None)
     if agency_col:
