@@ -41,7 +41,7 @@ def load_report(prefix):
 st.title("🛡️ Dashboard de Calidad y Estadísticas: NYC 311")
 
 # ORGANIZACIÓN POR TABS
-tab_calidad, tab_stats = st.tabs(["✅ Calidad (Bronze/Silver)", "📊 Estadísticas EDA"])
+tab_calidad, tab_eda = st.tabs(["✅ Calidad (Bronze/Silver)", "📊 Estadísticas de Negocio"])
 
 with tab_calidad:
     # =================================================================
@@ -117,12 +117,10 @@ with tab_calidad:
     else:
         st.warning("⚠️ Reporte Silver no encontrado.")
 
-with tab_stats:
-    # =================================================================
-    # SECCIÓN 3: ESTADÍSTICAS (INVOCANDO AL MÓDULO)
-    # =================================================================
+with tab_eda:
+    # Cargamos el reporte con las métricas corregidas
     df_eda_raw = load_report("metadata/eda_silver/")
     if df_eda_raw is not None:
         render_eda_section(df_eda_raw)
     else:
-        st.error("⚠️ Reporte de estadísticas EDA no encontrado en S3.")
+        st.warning("Reporte EDA no encontrado en S3.")
