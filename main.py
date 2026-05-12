@@ -14,26 +14,33 @@ def render_visual_charts(df):
         st.warning("No hay datos disponibles para las gráficas.")
         return
     
+    # Debug info
+    st.write("Debug: df shape", df.shape)
+    st.write("Debug: columns", df.columns.tolist())
+    
     # Ejemplo de gráfica: distribución por agencia
-    if 'agency' in df.columns:
+    agency_col = next((col for col in df.columns if 'agency' in col.lower()), None)
+    if agency_col:
         st.subheader("Distribución por Agencia")
-        agency_counts = df['agency'].value_counts().head(10)
+        agency_counts = df[agency_col].value_counts().head(10)
         fig = px.bar(agency_counts, x=agency_counts.index, y=agency_counts.values, 
                      title="Top 10 Agencias por Número de Reportes")
         st.plotly_chart(fig, use_container_width=True)
     
     # Otra gráfica: por tipo de queja
-    if 'complaint type' in df.columns:
+    complaint_col = next((col for col in df.columns if 'complaint' in col.lower() and 'type' in col.lower()), None)
+    if complaint_col:
         st.subheader("Distribución por Tipo de Queja")
-        complaint_counts = df['complaint type'].value_counts().head(10)
+        complaint_counts = df[complaint_col].value_counts().head(10)
         fig2 = px.pie(complaint_counts, values=complaint_counts.values, names=complaint_counts.index,
                       title="Top 10 Tipos de Quejas")
         st.plotly_chart(fig2, use_container_width=True)
     
     # Gráfica temporal si hay fechas
-    if 'created date' in df.columns:
+    date_col = next((col for col in df.columns if 'created' in col.lower() and 'date' in col.lower()), None)
+    if date_col:
         st.subheader("Tendencia Temporal de Reportes")
-        df['created_date'] = pd.to_datetime(df['created date'], errors='coerce')
+        df['created_date'] = pd.to_datetime(df[date_col], errors='coerce')
         df_monthly = df.groupby(df['created_date'].dt.to_period('M')).size().reset_index(name='count')
         df_monthly['created_date'] = df_monthly['created_date'].astype(str)
         fig3 = px.line(df_monthly, x='created_date', y='count', title="Reportes por Mes")
