@@ -4,7 +4,6 @@ import plotly.express as px
 import boto3
 import io
 
-# IMPORTAMOS EL MÓDULO DESCENTRALIZADO
 from eda_component import render_eda_section
 
 # 1. Configuración de la página
@@ -20,6 +19,31 @@ def get_s3_client():
         aws_session_token=st.secrets["aws"].get("session_token"),
         region_name=st.secrets["aws"]["region"]
     )
+
+@st.cache_data(ttl=3600)
+def load_full_silver_data():
+    s3 = get_s3_client()
+    bucket = "proyecto-ny311"
+    prefix = "silver/ny311/" 
+    
+    try:
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        files = [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith('.parquet') or obj['Key'].endswith('.csv')]
+        
+        if not files:
+            return None
+            
+        obj = s3.get_object(Bucket=bucket, Key=files[0])
+        
+        # Si es CSV (como parece ser tu caso por los 210k registros)
+        df = pd.read_csv(io.BytesIO(obj['Body'].read()))
+        return df
+    except Exception as e:
+        st.error(f"Error cargando datos Silver: {e}")
+        return None
+
+# --- CARGA INICIAL ---
+df_full = load_full_silver_data()
 
 # 3. Función para leer reportes
 @st.cache_data(ttl=3600)
@@ -44,8 +68,11 @@ def load_report(prefix):
 st.title("🛡️ Dashboard de Calidad y Estadísticas: NYC 311")
 
 # ORGANIZACIÓN POR TABS
-tab_calidad, tab_eda = st.tabs(["✅ Calidad (Bronze/Silver)", "📊 Estadísticas de Negocio"])
-
+tab_calidad, tab_stats, tab_graficas = st.tabs([
+    "✅ Control de Calidad", 
+    "📊 Estadísticas (Tabla)", 
+    "📈 Gráficas Dinámicas"
+])
 with tab_calidad:
     # =================================================================
     # SECCIÓN 1: BRONZE (TUS GRÁFICAS ORIGINALES)
@@ -120,10 +147,17 @@ with tab_calidad:
     else:
         st.warning("⚠️ Reporte Silver no encontrado.")
 
-with tab_eda:
+with tab_stats:
     # Cargamos el reporte con las métricas corregidas
     df_eda_raw = load_report("metadata/eda_silver/")
     if df_eda_raw is not None:
         render_eda_section(df_eda_raw)
     else:
         st.warning("Reporte EDA no encontrado en S3.")
+
+with tab_graficas:
+    if df_full is not None:
+        # Llamamos a la nueva función de gráficas con los 210k datos
+        render_visual_charts(df_full)
+    else:
+        st.warning("No se pudieron cargar los datos para las gráficas.")
