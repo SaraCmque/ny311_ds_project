@@ -6,7 +6,7 @@ import plotly.express as px
 def render_dynamic_charts(df: pd.DataFrame):
     """Renderiza gráficas dinámicas del dataset completo (Silver)."""
     
-    st.header("📈 Análisis Visual de Reportes (NYC 311)")
+    st.header("Análisis Visual de Reportes (NYC 311)")
     
     if df is None or df.empty:
         st.warning("No hay datos disponibles.")
@@ -56,7 +56,7 @@ def render_dynamic_charts(df: pd.DataFrame):
     lon_col = next((col for col in df_work.columns if col.lower() == 'longitude'), None)
     
     if lat_col and lon_col:
-        st.subheader("📍 Mapa de Incidentes (Muestra)")
+        st.subheader("Mapa de Incidentes (Muestra)")
         df_map = df_work.dropna(subset=[lat_col, lon_col]).sample(n=min(5000, len(df_work)))
         
         fig = px.scatter_mapbox(df_map, lat=lat_col, lon=lon_col,
@@ -64,4 +64,5 @@ def render_dynamic_charts(df: pd.DataFrame):
                                 hover_name=complaint_col if complaint_col else None,
                                 zoom=10, height=600, mapbox_style="carto-positron")
         st.plotly_chart(fig, use_container_width=True)
+        st.caption("Nota: Se tomó una muestra de hasta 5,000 incidentes para optimizar el rendimiento.")
 

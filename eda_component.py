@@ -19,7 +19,7 @@ def validate_columns(df, expected, section_name):
 
 
 def render_eda_section(df_eda):
-    st.header("📊 Análisis Estadístico de Negocio (NYC 311)")
+    st.header("Análisis Estadístico de Negocio (NYC 311)")
     
     if df_eda is None or df_eda.empty:
         st.warning("No se encontraron datos en el reporte EDA.")

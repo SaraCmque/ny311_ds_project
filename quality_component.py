@@ -7,7 +7,7 @@ from s3_utils import load_from_s3
 def render_quality_section():
     """Renderiza análisis de calidad: Bronze (original) y Silver (limpio)."""
     
-    st.header("📊 Fase 1: Análisis Bronze (CSV Original)")
+    st.header("Fase 1: Análisis Bronze (CSV Original)")
     df_bronze = load_from_s3("metadata/healthcheck_report/")
 
     if df_bronze is not None:
@@ -20,13 +20,13 @@ def render_quality_section():
         col3.metric("Calidad Inicial", f"{(1 - total_d/total_f)*100:.2f}%")
 
         st.divider()
-        st.subheader("📋 Resumen de Columnas: Bronze")
+        st.subheader("Resumen de Columnas: Bronze")
         cols_to_show = ["columna", "tipo_dato", "nulos_n", "nulos_pct", "unicos_n", "outliers_n"]
         st.dataframe(df_bronze[cols_to_show], use_container_width=True)
 
         c1, c2 = st.columns([0.6, 0.4])
         with c1:
-            st.subheader("📉 % de Nulidad por Campo (Bronze)")
+            st.subheader("% de Nulidad por Campo (Bronze)")
             df_sorted = df_bronze.sort_values("nulos_pct", ascending=True)
             h = len(df_sorted) * 25
             fig = px.bar(df_sorted, x="nulos_pct", y="columna", orientation='h',
@@ -35,7 +35,7 @@ def render_quality_section():
             st.plotly_chart(fig, use_container_width=True)
             
         with c2:
-            st.subheader("🚨 Distribución de Outliers")
+            st.subheader("Distribución de Outliers")
             df_out = df_bronze[df_bronze["outliers_n"] > 0]
             if not df_out.empty:
                 fig_out = px.pie(df_out, values="outliers_n", names="columna", hole=0.4,
@@ -45,7 +45,7 @@ def render_quality_section():
                 st.write("No se detectaron outliers.")
 
     st.write("---")
-    st.header("✨ Fase 2: Análisis Silver (Parquet Limpio)")
+    st.header("Fase 2: Análisis Silver (Parquet Limpio)")
     df_silver = load_from_s3("metadata/healthcheck_silver_parquet/")
 
     if df_silver is not None:
@@ -59,13 +59,13 @@ def render_quality_section():
             s3.metric("Reducción", f"{((total_f - total_s)/total_f)*100:.1f}%")
 
         st.divider()
-        st.subheader("📋 Resumen de Columnas: Silver")
+        st.subheader("Resumen de Columnas: Silver")
         st.dataframe(df_silver[["columna", "tipo_dato", "nulos_n", "nulos_pct", "unicos_n"]], 
                      use_container_width=True)
 
         sc1, sc2 = st.columns([0.6, 0.4])
         with sc1:
-            st.subheader("📉 % de Nulidad por Campo (Silver)")
+            st.subheader("% de Nulidad por Campo (Silver)")
             df_s_sorted = df_silver.sort_values("nulos_pct", ascending=True)
             h = len(df_s_sorted) * 25
             fig_s = px.bar(df_s_sorted, x="nulos_pct", y="columna", orientation='h',
