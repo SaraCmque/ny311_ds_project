@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import boto3
@@ -32,16 +33,27 @@ def load_from_s3(prefix: str, bucket: str = "proyecto-ny311") -> pd.DataFrame | 
         if not files:
             return None
         
-        part_files = [f for f in files if 'part-' in f]
-        selected = part_files[0] if part_files else files[0]
+        part_files = sorted([f for f in files if 'part-' in os.path.basename(f)])
+        candidates = part_files if part_files else sorted(files)
         
+        if len(candidates) > 1:
+            dfs = []
+            for selected in candidates:
+                obj = s3.get_object(Bucket=bucket, Key=selected)
+                body = io.BytesIO(obj['Body'].read())
+                if selected.endswith('.parquet'):
+                    dfs.append(pd.read_parquet(body))
+                else:
+                    dfs.append(pd.read_csv(body))
+            return pd.concat(dfs, ignore_index=True)
+
+        selected = candidates[0]
         obj = s3.get_object(Bucket=bucket, Key=selected)
         body = io.BytesIO(obj['Body'].read())
         
         if selected.endswith('.parquet'):
             return pd.read_parquet(body)
-        else:
-            return pd.read_csv(body)
+        return pd.read_csv(body)
             
     except Exception as e:
         st.error(f"Error cargando datos de {prefix}: {e}")
