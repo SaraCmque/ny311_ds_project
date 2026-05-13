@@ -6,7 +6,7 @@ from charts_component import render_dynamic_charts
 
 
 st.set_page_config(page_title="NYC 311 Healthcheck", layout="wide")
-st.title("🛡️ Dashboard de Calidad y Estadísticas: NYC 311")
+st.title("NYC 311: Dashboard de Calidad de Datos y Estadísticas")
 
 tab_calidad, tab_stats, tab_graficas = st.tabs([
     "✅ Control de Calidad", 
