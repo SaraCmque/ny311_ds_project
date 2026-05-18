@@ -47,3 +47,5 @@ streamlit run main.py
 - Las gráficas dinámicas usan todos los datos del dataset (200k+ registros)
 - El mapa de incidentes muestra una muestra de hasta 5,000 puntos para optimizar el rendimiento
 - Los datos se actualizan cada 1 hora (TTL en caché)
+
+- 
