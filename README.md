@@ -4,7 +4,7 @@ Dashboard interactivo para el análisis de calidad de datos y estadísticas de r
 
 ## 🔗 Acceso
 
-**Disponible en:** [https://ny311dsproyect.streamlit.app/](https://ny311dsproyect.streamlit.app/)
+**Disponible en:** [https://ny311dsproject.streamlit.app/](https://ny311dsproject.streamlit.app/)
 
 ## Características
 
