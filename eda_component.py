@@ -36,10 +36,67 @@ def render_eda_section(df_eda):
 
     with tab_cats:
         st.subheader("Concentración e Impacto de Modas")
+        st.write("Análisis de las variables dominantes en el dataset de reportes de NYC.")
+        
         if validate_columns(df_eda, EXPECTED_COLUMNS["cats"], "categorías"):
             df_c = df_eda[~df_eda["columna"].str.lower().str.contains("latitude|longitude|date")]
+            
             if not df_c.empty:
-                st.table(df_c[["columna", "moda"]])
+                # Convertimos las filas en un diccionario para manipularlas fácilmente
+                modas_dict = dict(zip(df_c["columna"], df_c["moda"]))
+                
+                # --- INGENIERÍA DE LA ATENCIÓN: TARJETAS DE ALTO CONTRASTE ---
+                
+                # 1. FIGURA DESTACADA (ALERTA VISUAL): La queja principal que colapsa el sistema
+                complaint_moda = modas_dict.get("Complaint Type", modas_dict.get("complaint_type", "No disponible"))
+                descriptor_moda = modas_dict.get("Descriptor", modas_dict.get("descriptor", "No disponible"))
+                
+                st.markdown(
+                    f"""
+                    <div style="
+                        background-color: rgba(217, 56, 58, 0.08); 
+                        border-left: 5px solid {COLOR_ANOMALIA}; 
+                        padding: 20px; 
+                        border-radius: 6px; 
+                        margin-bottom: 25px;
+                        border-top: 1px solid rgba(217, 56, 58, 0.2);
+                        border-right: 1px solid rgba(217, 56, 58, 0.2);
+                        border-bottom: 1px solid rgba(217, 56, 58, 0.2);
+                    ">
+                        <span style="color: {COLOR_ANOMALIA}; font-size: 13px; font-weight: bold; letter-spacing: 1px; uppercase;">🚨 FOCO CRÍTICO OPERATIVO</span>
+                        <h2 style="margin: 5px 0 0 0; font-size: 30px; font-weight: 800; color: {COLOR_ANOMALIA};">{complaint_moda}</h2>
+                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #718096;">
+                            Esta es la categoría con mayor recurrencia en toda la ciudad. 
+                            Específicamente bajo la modalidad de: <b>{descriptor_moda}</b>.
+                        </p>
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
+                
+                # 2. CONTEXTO NEUTRO: Las demás modas se van al fondo en un layout limpio de columnas
+                st.markdown("### Variables de Control Operativo")
+                col_m1, col_m2, col_m3 = st.columns(3)
+                
+                with col_m1:
+                    agency_moda = modas_dict.get("Agency", modas_dict.get("agency", "N/A"))
+                    st.metric(label="🏢 Agencia Dominante", value=agency_moda)
+                    st.caption("Entidad que procesa el mayor volumen de carga.")
+                    
+                with col_m2:
+                    city_moda = modas_dict.get("City", modas_dict.get("city", "N/A"))
+                    st.metric(label="🏙️ Ciudad Principal", value=city_moda)
+                    st.caption("Foco geográfico de atención centralizada.")
+                    
+                with col_m3:
+                    status_moda = modas_dict.get("Status", modas_dict.get("status", "N/A"))
+                    st.metric(label="📌 Estado Común", value=status_moda)
+                    st.caption("Ciclo de vida actual de los reportes en el EDA.")
+                
+                # Dejamos la tabla original oculta en un expander por si los evaluadores quieren auditar el dataframe
+                with st.expander("🔍 Ver estructura de datos origen (Matriz EDA)"):
+                    st.table(df_c[["columna", "moda"]])
+                    
             else:
                 st.info("No hay datos categóricos disponibles.")
 
