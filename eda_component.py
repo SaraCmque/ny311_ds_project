@@ -205,8 +205,14 @@ def render_eda_section(df_eda):
                         if df_daily["delta_pct"].notna().any():
                             anomaly_idx = int(df_daily["delta_pct"].idxmax())
                             anomaly_row = df_daily.loc[anomaly_idx]
+                            quiebre_razon = "mayor aumento porcentual respecto al día anterior"
                         else:
                             anomaly_row = df_daily.loc[df_daily["total_reportes"].idxmax()]
+                            quiebre_razon = "mayor volumen absoluto de reportes"
+
+                        prev_total = anomaly_row["prev_total"] if not pd.isna(anomaly_row["prev_total"]) else 0
+                        delta_pct = anomaly_row["delta_pct"] if not pd.isna(anomaly_row["delta_pct"]) else 0
+                        delta_text = f"Incremento del {delta_pct * 100:.1f}% respecto al día anterior" if prev_total else "No hay día previo para comparar"
 
                         fig = go.Figure()
                         fig.add_trace(go.Scatter(
@@ -228,7 +234,7 @@ def render_eda_section(df_eda):
                             y=[anomaly_row["total_reportes"] * 1.05],
                             mode='text',
                             text=[
-                                f"⚠️ <b>QUIEBRE CRÍTICO DE TENDENCIA</b><br>Fecha: {anomaly_row[date_col].strftime('%Y-%m-%d')}<br>Total reportes: {int(anomaly_row['total_reportes'])}"
+                                f"⚠️ <b>QUIEBRE CRÍTICO DE TENDENCIA</b><br>Fecha: {anomaly_row[date_col].strftime('%Y-%m-%d')}<br>Total reportes: {int(anomaly_row['total_reportes'])}<br>{delta_text}"
                             ],
                             textposition="top center",
                             textfont=dict(color=COLOR_ANOMALIA, size=12),
@@ -272,6 +278,9 @@ def render_eda_section(df_eda):
                         summary_col1.metric("Columna de Fecha", date_col)
                         summary_col2.metric("Fecha de Anomalía", anomaly_row[date_col].strftime('%Y-%m-%d'))
                         summary_col3.metric("Reportes en ese día", int(anomaly_row["total_reportes"]))
+                        st.markdown(
+                            f"**Razón del quiebre:** {quiebre_razon.capitalize()}\n\n- {delta_text}\n- Reportes previos: {int(prev_total) if prev_total else 'N/A'}"
+                        )
 
                 st.markdown("### Resumen de Ventana Temporal")
                 for _, row in df_t.iterrows():
