@@ -33,17 +33,17 @@ def render_dynamic_charts(df: pd.DataFrame):
             # ORDENACIÓN: Total ascendente para que la barra más larga (HEAT/HOT WATER) quede arriba
             # COLOR SELECTIVO: Solo la barra superior es Roja, el resto Gris
             colores_quejas = [COLOR_NEUTRO] * len(top_complaints)
-            colores_quejas[-1] = COLOR_FOCO  # La barra con más valor (última en el dataframe ordenado de forma ascendente)
-
+            colores_quejas[-1] = COLOR_FOCO  # La barra con más valor
+            
             fig = px.bar(top_complaints, x='Cantidad', y='Tipo', orientation='h')
             
             fig.update_traces(marker_color=colores_quejas, marker_line_color=colores_quejas, opacity=0.85)
             fig.update_layout(
-                yaxis={'categoryorder':'total ascending'},
                 showlegend=False,
                 plot_bgcolor=COLOR_FONDO_LIGERO,
                 xaxis=dict(showgrid=False, title="Número de Reportes"),
-                yaxis=dict(title="")
+                # SOLUCIÓN: Fusionamos ambas propiedades de yaxis en un único diccionario
+                yaxis=dict(categoryorder='total ascending', title="")
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -102,7 +102,6 @@ def render_dynamic_charts(df: pd.DataFrame):
         df_map = df_work.dropna(subset=[lat_col, lon_col]).sample(n=min(5000, len(df_work)))
         
         # COLOR SELECTIVO EN MAPA: Puntos en Brooklyn o de calor específicos reciben la atención
-        # Usamos un mapa oscuro ("dark") o minimalista para que resalten los puntos
         fig = px.scatter_mapbox(df_map, lat=lat_col, lon=lon_col,
                                 hover_name=complaint_col if complaint_col else None,
                                 zoom=10, height=600, mapbox_style="carto-darkmatter")
@@ -114,4 +113,3 @@ def render_dynamic_charts(df: pd.DataFrame):
             
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Nota: Muestra aleatoria de 5,000 registros para optimización de memoria.")
-
