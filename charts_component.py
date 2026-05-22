@@ -33,6 +33,22 @@ def render_dynamic_charts(df: pd.DataFrame):
     COLOR_FOCO = "#D9383A"       # Rojo estratégico
     COLOR_NEUTRO = "#4A5568"     # Gris oscuro sutil para barras secundarias
     COLOR_FONDO_LIGERO = "rgba(0,0,0,0)"
+    
+    # Configuración base reutilizable para dar contexto y enmarcar los ejes
+    EJE_X_BASE = dict(
+        showline=True,
+        linewidth=1.2,
+        linecolor="rgba(160, 174, 192, 0.4)",
+        ticks="outside",
+        tickfont=dict(color="#A0AEC0", size=10)
+    )
+    EJE_Y_BASE = dict(
+        showline=True,
+        linewidth=1.2,
+        linecolor="rgba(160, 174, 192, 0.4)",
+        ticks="outside",
+        tickfont=dict(color="#A0AEC0", size=10)
+    )
 
     with col_a:
         st.subheader("Top 10 Quejas Principalmente Críticas")
@@ -45,11 +61,21 @@ def render_dynamic_charts(df: pd.DataFrame):
             
             fig = px.bar(top_complaints, x='Cantidad', y='Tipo', orientation='h')
             fig.update_traces(marker_color=colores_quejas, marker_line_color=colores_quejas, opacity=0.85)
+            
             fig.update_layout(
                 showlegend=False,
                 plot_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(showgrid=False, title="Número de Reportes"),
-                yaxis=dict(categoryorder='total ascending', title_text="")
+                paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(
+                    **EJE_X_BASE,
+                    showgrid=False,
+                    title=dict(text="Número de Reportes", font=dict(color="#A0AEC0", size=11))
+                ),
+                yaxis=dict(
+                    **EJE_Y_BASE,
+                    categoryorder='total ascending',
+                    title=dict(text="Tipo de Incidente", font=dict(color="#A0AEC0", size=11))
+                )
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -67,11 +93,20 @@ def render_dynamic_charts(df: pd.DataFrame):
             
             fig = px.bar(borough_dist, x='Total', y='Distrito', orientation='h')
             fig.update_traces(marker_color=colores_distritos, opacity=0.85)
+            
             fig.update_layout(
                 showlegend=False,
                 plot_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(showgrid=False, title="Total de Reportes"),
-                yaxis=dict(title_text="")
+                paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(
+                    **EJE_X_BASE,
+                    showgrid=False,
+                    title=dict(text="Total de Reportes", font=dict(color="#A0AEC0", size=11))
+                ),
+                yaxis=dict(
+                    **EJE_Y_BASE,
+                    title=dict(text="Distrito (Borough)", font=dict(color="#A0AEC0", size=11))
+                )
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -117,8 +152,18 @@ def render_dynamic_charts(df: pd.DataFrame):
         fig.update_layout(
             showlegend=False,
             plot_bgcolor=COLOR_FONDO_LIGERO,
-            xaxis=dict(showgrid=False, title="Línea de Tiempo"),
-            yaxis=dict(showgrid=True, gridcolor="rgba(200,200,200,0.1)", title_text="Frecuencia Diaria")
+            paper_bgcolor=COLOR_FONDO_LIGERO,
+            xaxis=dict(
+                **EJE_X_BASE,
+                showgrid=False,
+                title=dict(text="Línea de Tiempo", font=dict(color="#A0AEC0", size=11))
+            ),
+            yaxis=dict(
+                **EJE_Y_BASE,
+                showgrid=True,
+                gridcolor="rgba(200,200,200,0.08)",
+                title=dict(text="Frecuencia Diaria de Casos", font=dict(color="#A0AEC0", size=11))
+            )
         )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -131,39 +176,42 @@ def render_dynamic_charts(df: pd.DataFrame):
     st.write("Análisis del tiempo promedio requerido para resolver y cerrar incidentes por categoría.")
     
     if date_col and closed_col and complaint_col:
-        # Calcular delta de resolución en días para las 210k filas
         df_work['dias_resolucion'] = (df_work[closed_col] - df_work[date_col]).dt.total_seconds() / 86400
         df_sla = df_work[df_work['dias_resolucion'] >= 0].dropna(subset=['dias_resolucion'])
         
         if not df_sla.empty:
-            # Agrupación por promedios de atención
             df_sla_avg = df_sla.groupby(complaint_col)['dias_resolucion'].mean().reset_index()
             df_sla_avg = df_sla_avg.sort_values(by='dias_resolucion', ascending=False).head(10)
-            
-            # Ordenar ascendente para la visualización en Plotly horizontal (peor tiempo arriba)
             df_sla_avg = df_sla_avg.sort_values(by='dias_resolucion', ascending=True)
             
             colores_sla = [COLOR_NEUTRO] * len(df_sla_avg)
-            colores_sla[-1] = COLOR_FOCO  # Pintar de rojo la anomalía de retraso masivo (Top 1)
+            colores_sla[-1] = COLOR_FOCO  
             
             fig_sla = px.bar(df_sla_avg, x='dias_resolucion', y=complaint_col, orientation='h')
             fig_sla.update_traces(marker_color=colores_sla, opacity=0.9)
             
-            # Captura de datos de la peor categoría para la anotación inteligente
             peor_cat = df_sla_avg.iloc[-1][complaint_col]
             peor_dia = df_sla_avg.iloc[-1]['dias_resolucion']
             
             fig_sla.update_layout(
                 plot_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(showgrid=True, gridcolor="rgba(100,100,100,0.1)", title="Días Promedio de Cierre"),
-                yaxis=dict(title_text=""),
-                # Evitar cortes: le damos aire a la derecha de la barra más larga
+                paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(
+                    **EJE_X_BASE,
+                    showgrid=True,
+                    gridcolor="rgba(100,100,100,0.1)",
+                    title=dict(text="Días Promedio de Cierre", font=dict(color="#A0AEC0", size=11))
+                ),
+                yaxis=dict(
+                    **EJE_Y_BASE,
+                    title=dict(text="Categoría de Incidente", font=dict(color="#A0AEC0", size=11))
+                ),
                 xaxis_range=[0, peor_dia * 1.3],
                 annotations=[
                     dict(
                         x=peor_dia,
                         y=peor_cat,
-                        text=f"⚠️ <b>RETRASTO ANORMAL DETECTADO</b><br>La categoría <i>{peor_cat}</i> de la ciudad<br>rompe los SLAs con {peor_dia:.1f} días promedio.",
+                        text=f"⚠️ <b>RETRASO ANORMAL DETECTADO</b><br>La categoría <i>{peor_cat}</i> de la ciudad<br>rompe los SLAs con {peor_dia:.1f} días promedio.",
                         showarrow=True,
                         arrowhead=2,
                         arrowcolor=COLOR_FOCO,
