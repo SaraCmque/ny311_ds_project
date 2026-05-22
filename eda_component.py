@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+from s3_utils import load_from_s3
 
 EXPECTED_COLUMNS = {
     "geo": ["columna", "minimo", "maximo", "media"],
@@ -15,6 +16,20 @@ def validate_columns(df, expected, section_name):
         st.error(f"El reporte EDA para {section_name} no contiene las columnas esperadas: {missing}.")
         return False
     return True
+
+
+def find_date_column(df: pd.DataFrame) -> str | None:
+    date_cols = [col for col in df.columns if "date" in col.lower()]
+    if not date_cols:
+        return None
+
+    for candidate in ["created", "closed", "opened", "incident", "report"]:
+        match = next((col for col in date_cols if candidate in col.lower()), None)
+        if match:
+            return match
+
+    return date_cols[0]
+
 
 def render_eda_section(df_eda):
     st.header("Análisis Estadístico de Negocio (NYC 311)")
@@ -165,75 +180,99 @@ def render_eda_section(df_eda):
         if not df_t.empty:
             if validate_columns(df_t, EXPECTED_COLUMNS["time"], "temporal"):
                 
-                fechas_sim = [f"2019-10-{i:02d}" for i in range(1, 31)] + [f"2019-11-{i:02d}" for i in range(1, 15)]
-                reportes_sim = [4000 + (i % 3)*500 for i in range(len(fechas_sim))]
-                
-                punto_quiebre_idx = 27  
-                reportes_sim[punto_quiebre_idx] = 7800  
-                
-                fig = go.Figure()
-                
-                fig.add_trace(go.Scatter(
-                    x=fechas_sim, y=reportes_sim,
-                    mode='lines',
-                    line=dict(color=COLOR_FONDO_NEUTRO, width=2),
-                    name='Volumen Histórico Normal'
-                ))
-                
-                fig.add_trace(go.Scatter(
-                    x=[fechas_sim[punto_quiebre_idx]],
-                    y=[reportes_sim[punto_quiebre_idx]],
-                    mode='markers',
-                    marker=dict(color=COLOR_ANOMALIA, size=15, symbol='circle',
-                                line=dict(color='#FFFFFF', width=3)),
-                    name='Anomalía Crítica'
-                ))
-                
-                fig.add_trace(go.Scatter(
-                    x=[fechas_sim[punto_quiebre_idx]],
-                    y=[reportes_sim[punto_quiebre_idx] + 300],
-                    mode='text',
-                    text=["⚠️ <b>QUIEBRE CRÍTICO DE TENDENCIA</b><br>Incremento inusual del +95% en reportes<br>focalizado en Calefacción (Brooklyn)."],
-                    textposition="top center",
-                    textfont=dict(color=COLOR_ANOMALIA, size=12),
-                    showlegend=False
-                ))
-                
-                # --- CAMBIO APLICADO: ENMARCADO Y CONTEXTUALIZACIÓN DE EJES ---
-                fig.update_layout(
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    xaxis=dict(
-                        showgrid=False,
-                        showline=True,                        # Línea sólida del eje X
-                        linewidth=1.5,
-                        linecolor="rgba(160, 174, 192, 0.4)", # Color gris sutil
-                        ticks="outside",                      # Marcas de graduación hacia afuera
-                        tickfont=dict(color="#A0AEC0", size=10),
-                        title=dict(
-                            text="Línea de Tiempo",
-                            font=dict(color="#A0AEC0", size=12)
+                df_silver = load_from_s3("silver/ny311/")
+                if df_silver is None or df_silver.empty:
+                    st.warning("No se pudieron cargar los datos Silver para el análisis temporal.")
+                else:
+                    date_col = find_date_column(df_silver)
+                    if date_col is None:
+                        st.warning("No se encontró una columna de fecha válida en Silver.")
+                    else:
+                        df_silver[date_col] = pd.to_datetime(df_silver[date_col], errors="coerce")
+                        df_time = df_silver.dropna(subset=[date_col]).copy()
+                        df_daily = (
+                            df_time.groupby(df_time[date_col].dt.date)
+                            .size()
+                            .reset_index(name="total_reportes")
                         )
-                    ),
-                    yaxis=dict(
-                        showgrid=True,
-                        gridcolor="rgba(250,250,250,0.05)",
-                        showline=True,                        # Línea sólida del eje Y
-                        linewidth=1.5,
-                        linecolor="rgba(160, 174, 192, 0.4)",
-                        ticks="outside",                      # Marcas de graduación hacia afuera
-                        tickfont=dict(color="#A0AEC0", size=10),
-                        title=dict(
-                            text="Carga de Reportes",
-                            font=dict(color="#A0AEC0", size=12)
+                        df_daily = df_daily.sort_values(by=date_col)
+                        df_daily[date_col] = pd.to_datetime(df_daily[date_col])
+                        df_daily["prev_total"] = df_daily["total_reportes"].shift(1)
+                        df_daily["delta_pct"] = (
+                            df_daily["total_reportes"] - df_daily["prev_total"]
+                        ) / df_daily["prev_total"].replace({0: 1})
+
+                        if df_daily["delta_pct"].notna().any():
+                            anomaly_idx = int(df_daily["delta_pct"].idxmax())
+                            anomaly_row = df_daily.loc[anomaly_idx]
+                        else:
+                            anomaly_row = df_daily.loc[df_daily["total_reportes"].idxmax()]
+
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=df_daily[date_col], y=df_daily["total_reportes"],
+                            mode='lines',
+                            line=dict(color=COLOR_FONDO_NEUTRO, width=2),
+                            name='Volumen Diario Real'
+                        ))
+                        fig.add_trace(go.Scatter(
+                            x=[anomaly_row[date_col]],
+                            y=[anomaly_row["total_reportes"]],
+                            mode='markers',
+                            marker=dict(color=COLOR_ANOMALIA, size=15, symbol='circle',
+                                        line=dict(color='#FFFFFF', width=3)),
+                            name='Anomalía Crítica'
+                        ))
+                        fig.add_trace(go.Scatter(
+                            x=[anomaly_row[date_col]],
+                            y=[anomaly_row["total_reportes"] * 1.05],
+                            mode='text',
+                            text=[
+                                f"⚠️ <b>QUIEBRE CRÍTICO DE TENDENCIA</b><br>Fecha: {anomaly_row[date_col].strftime('%Y-%m-%d')}<br>Total reportes: {int(anomaly_row['total_reportes'])}"
+                            ],
+                            textposition="top center",
+                            textfont=dict(color=COLOR_ANOMALIA, size=12),
+                            showlegend=False
+                        ))
+                        fig.update_layout(
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            xaxis=dict(
+                                showgrid=False,
+                                showline=True,
+                                linewidth=1.5,
+                                linecolor="rgba(160, 174, 192, 0.4)",
+                                ticks="outside",
+                                tickfont=dict(color="#A0AEC0", size=10),
+                                title=dict(
+                                    text="Línea de Tiempo",
+                                    font=dict(color="#A0AEC0", size=12)
+                                )
+                            ),
+                            yaxis=dict(
+                                showgrid=True,
+                                gridcolor="rgba(250,250,250,0.05)",
+                                showline=True,
+                                linewidth=1.5,
+                                linecolor="rgba(160, 174, 192, 0.4)",
+                                ticks="outside",
+                                tickfont=dict(color="#A0AEC0", size=10),
+                                title=dict(
+                                    text="Carga de Reportes",
+                                    font=dict(color="#A0AEC0", size=12)
+                                )
+                            ),
+                            showlegend=False,
+                            height=450
                         )
-                    ),
-                    showlegend=False,
-                    height=450
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        st.markdown("### Resumen de Ventana Temporal Real")
+                        summary_col1, summary_col2, summary_col3 = st.columns(3)
+                        summary_col1.metric("Columna de Fecha", date_col)
+                        summary_col2.metric("Fecha de Anomalía", anomaly_row[date_col].strftime('%Y-%m-%d'))
+                        summary_col3.metric("Reportes en ese día", int(anomaly_row["total_reportes"]))
+
                 st.markdown("### Resumen de Ventana Temporal")
                 for _, row in df_t.iterrows():
                     with st.expander(f"Métricas de Control: {row['columna'].upper()}"):
