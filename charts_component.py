@@ -43,7 +43,7 @@ def render_dynamic_charts(df: pd.DataFrame):
                 plot_bgcolor=COLOR_FONDO_LIGERO,
                 xaxis=dict(showgrid=False, title="Número de Reportes"),
                 # SOLUCIÓN: Fusionamos ambas propiedades de yaxis en un único diccionario
-                yaxis=dict(categoryorder='total ascending', title="")
+                yaxis=dict(categoryorder='total ascending', title_text="")
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -70,7 +70,7 @@ def render_dynamic_charts(df: pd.DataFrame):
                 showlegend=False,
                 plot_bgcolor=COLOR_FONDO_LIGERO,
                 xaxis=dict(showgrid=False, title="Total de Reportes"),
-                yaxis=dict(title="")
+                yaxis=dict(title_text="")
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -88,7 +88,7 @@ def render_dynamic_charts(df: pd.DataFrame):
         fig.update_layout(
             plot_bgcolor=COLOR_FONDO_LIGERO,
             xaxis=dict(showgrid=False, title="Línea de Tiempo"),
-            yaxis=dict(showgrid=True, gridcolor="rgba(200,200,200,0.1)", title="Frecuencia Diaria")
+            yaxis=dict(showgrid=True, gridcolor="rgba(200,200,200,0.1)", title_text="Frecuencia Diaria")
         )
         st.plotly_chart(fig, use_container_width=True)
 
