@@ -28,9 +28,10 @@ def render_eda_section(df_eda):
         st.error("El reporte EDA no contiene la columna esperada 'columna'.")
         return
 
-    # Estilos de contraste asignados estratégicamente
-    COLOR_FONDO_NEUTRO = "#2D3748"  # Gris apagado (Mantiene la historia en el fondo)
-    COLOR_ANOMALIA = "#FF0055"      # Neón de alta vibrancia (Demanda atención inmediata)
+    # Ajuste de colores para Alto Contrasto en Fondos Claros/Oscuros de Streamlit
+    COLOR_FONDO_NEUTRO = "#4A5568"  # Gris Slate visible, balanceado como fondo de contexto
+    COLOR_ANOMALIA = "#D9383A"      # Rojo estratégico de alta vibrancia
+    COLOR_FONDO_LIGERO = "rgba(0,0,0,0)"
     
     tab_cats, tab_geo, tab_time = st.tabs(["🏷️ Categorías Principales", "📍 Ubicación (NYC)", "📅 Tiempos & Anomalías"])
 
@@ -60,62 +61,82 @@ def render_eda_section(df_eda):
         if not df_t.empty:
             if validate_columns(df_t, EXPECTED_COLUMNS["time"], "temporal"):
                 
-                # --- AQUÍ INYECTAMOS EL GRÁFICO DE CONTRASTE DE ANOMALÍAS ---
-                # Simulamos o extraemos la serie de tiempo para mapear el quiebre de tendencia
-                # Nota: Para el taller, renderizamos un gráfico de comportamiento histórico vs punto de quiebre.
-                
-                # Datos de ejemplo basados en el comportamiento real del archivo subido (Oct-Nov)
+                # Datos de comportamiento histórico simulados
                 fechas_sim = [f"2019-10-{i:02d}" for i in range(1, 31)] + [f"2019-11-{i:02d}" for i in range(1, 15)]
                 reportes_sim = [4000 + (i % 3)*500 for i in range(len(fechas_sim))]
                 
-                # Introducir la anomalía real/crítica (Punto de Quiebre)
-                punto_quiebre_idx = 27  # Octubre 28 aprox (El pico masivo que se ve en tu imagen 2)
-                reportes_sim[punto_quiebre_idx] = 7800  # Disparo anormal
+                # Introducir anomalía crítica en el índice 27 (Octubre 28)
+                punto_quiebre_idx = 27  
+                reportes_sim[punto_quiebre_idx] = 7800  
                 
                 fig = go.Figure()
                 
-                # 1. NEUTRALIDAD DE CONTEXTO: Línea histórica en gris oscuro/sutil integrado al fondo
+                # 1. CONTEXTO NEUTRO: Línea histórica uniforme
                 fig.add_trace(go.Scatter(
                     x=fechas_sim, y=reportes_sim,
                     mode='lines',
-                    line=dict(color=COLOR_FONDO_NEUTRO, width=2),
-                    name='Volumen Histórico Normal'
+                    line=dict(color=COLOR_FONDO_NEUTRO, width=2.5),
+                    name='Volumen Normal',
+                    hoverinfo='skip'  # Evita ruido al pasar el mouse por puntos normales
                 ))
                 
-                # 2. ALERTA VISUAL: Marcador de alta vibrancia (Punto de fuga) que exige atención instantánea
+                # 2. ALERTA VISUAL: Punto vibrante centrado en el quiebre
                 fig.add_trace(go.Scatter(
                     x=[fechas_sim[punto_quiebre_idx]],
                     y=[reportes_sim[punto_quiebre_idx]],
                     mode='markers',
-                    marker=dict(color=COLOR_ANOMALIA, size=15, symbol='circle',
-                                line=dict(color='#FFFFFF', width=3)),
-                    name='Anomalía Crítica'
+                    marker=dict(color=COLOR_ANOMALIA, size=14, symbol='circle',
+                                line=dict(color='#FFFFFF', width=2)),
+                    name='Anomalía Detectada'
                 ))
                 
-                # 3. ANOTACIONES: Explicación directa en el gráfico para eliminar dudas (Insight inmediato)
-                fig.add_trace(go.Scatter(
-                    x=[fechas_sim[punto_quiebre_idx]],
-                    y=[reportes_sim[punto_quiebre_idx] + 300],
-                    mode='text',
-                    text=["⚠️ <b>QUIEBRE CRÍTICO DE TENDENCIA</b><br>Incremento inusual del +95% en reportes<br>focalizado en Calefacción (Brooklyn)."],
-                    textposition="top center",
-                    textfont=dict(color=COLOR_ANOMALIA, size=12),
-                    showlegend=False
-                ))
-                
-                # Formato limpio (Data-to-Ink ratio aplicado aquí también)
+                # 3. ANOTACIONES CON FLECHA: Solución al corte de texto superior
+                # Usamos layout annotations para fijar de manera estricta la posición
                 fig.update_layout(
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
+                    annotations=[
+                        dict(
+                            x=fechas_sim[punto_quiebre_idx],
+                            y=reportes_sim[punto_quiebre_idx],
+                            xref="x",
+                            yref="y",
+                            text="⚠️ <b>QUIEBRE CRÍTICO DE TENDENCIA</b><br>Incremento inusual del +95% en reportes<br>focalizado en Calefacción (Brooklyn).",
+                            showarrow=True,
+                            arrowhead=2,
+                            arrowsize=1,
+                            arrowwidth=2,
+                            arrowcolor=COLOR_ANOMALIA,
+                            ax=0,
+                            ay=-55,  # Desplazamiento controlado de la etiqueta hacia arriba de la flecha
+                            font=dict(color=COLOR_ANOMALIA, size=12),
+                            bgcolor="rgba(255, 255, 255, 0.9)" if not st.get_option("theme.base") == "dark" else "rgba(26, 28, 36, 0.9)",
+                            bordercolor=COLOR_ANOMALIA,
+                            borderwidth=1,
+                            borderpad=6
+                        )
+                    ]
+                )
+                
+                # Formato y control estricto del rango del Eje Y
+                max_y_valor = max(reportes_sim)
+                fig.update_layout(
+                    plot_bgcolor=COLOR_FONDO_LIGERO,
+                    paper_bgcolor=COLOR_FONDO_LIGERO,
                     xaxis=dict(showgrid=False, title="Línea de Tiempo"),
-                    yaxis=dict(showgrid=True, gridcolor="rgba(250,250,250,0.05)", title="Carga de Reportes"),
+                    # Añadimos un margen del 20% arriba del valor máximo para la etiqueta
+                    yaxis=dict(
+                        showgrid=True, 
+                        gridcolor="rgba(100,100,100,0.1)", 
+                        title="Carga de Reportes",
+                        range=[min(reportes_sim) - 500, max_y_valor * 1.20] 
+                    ),
                     showlegend=False,
-                    height=450
+                    height=500,
+                    margin=dict(t=40, b=40, l=60, r=40)
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Mantener tus métricas originales abajo como soporte numérico complementario
+                # Soporte numérico secundario
                 st.markdown("### Resumen de Ventana Temporal")
                 for _, row in df_t.iterrows():
                     with st.expander(f"Métricas de Control: {row['columna'].upper()}"):
