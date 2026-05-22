@@ -143,8 +143,7 @@ def render_eda_section(df_eda):
                         marker=dict(
                             color=puntos_control["Color"], 
                             size=puntos_control["Tamaño"],
-                            opacity=0.9,
-                            line=dict(width=1.5, color="#FFFFFF")
+                            opacity=0.9
                         )
                     )
                     
