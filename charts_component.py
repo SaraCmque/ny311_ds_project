@@ -1,152 +1,167 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-
+import plotly.graph_objects as go
 
 def render_dynamic_charts(df: pd.DataFrame):
-    """Renderiza gráficas dinámicas optimizadas para la Ingeniería de la Atención."""
+    """Renderiza gráficas dinámicas avanzadas optimizadas para la detección de anomalías."""
     
-    st.header("Análisis Visual de Reportes (NYC 311)")
+    st.header("Análisis Visual Avanzado de Reportes (NYC 311)")
     
     if df is None or df.empty:
-        st.warning("No hay datos disponibles.")
+        st.warning("No hay datos disponibles en la capa Silver.")
         return
     
     df_work = df.copy()
+    
+    # Identificación e inferencia de columnas críticas
     date_col = next((col for col in df_work.columns if 'created' in col.lower() and 'date' in col.lower()), None)
+    closed_col = next((col for col in df_work.columns if 'closed' in col.lower() and 'date' in col.lower()), None)
     complaint_col = next((col for col in df_work.columns if 'complaint' in col.lower() and 'type' in col.lower()), None)
     borough_col = next((col for col in df_work.columns if 'borough' in col.lower()), None)
     
-    col_a, col_b = st.columns(2)
+    # Asegurar tipos de datos correctos para las 210k filas
+    if date_col:
+        df_work[date_col] = pd.to_datetime(df_work[date_col], errors='coerce')
+    if closed_col:
+        df_work[closed_col] = pd.to_datetime(df_work[closed_col], errors='coerce')
 
-    # PALETA DE COLORES SELECTIVA (Gris para control, Rojo para llamar la atención)
-    COLOR_FOCO = "#D9383A"       # Rojo estratégico
-    COLOR_NEUTRO = "#4A5568"     # Gris oscuro sutil para barras secundarias
+    # Paleta de colores estratégica
+    COLOR_FOCO = "#D9383A"       # Rojo vibrante para anomalías
+    COLOR_NEUTRO = "#4A5568"     # Gris slate para contexto histórico
     COLOR_FONDO_LIGERO = "rgba(0,0,0,0)"
 
-    with col_a:
-        st.subheader("Top 10 Quejas Principalmente Críticas")
-        if complaint_col:
-            top_complaints = df_work[complaint_col].value_counts().head(10).reset_index()
-            top_complaints.columns = ['Tipo', 'Cantidad']
+    # ==========================================
+    # ANÁLISIS 1: EFICIENCIA (TIEMPO DE RESOLUCIÓN)
+    # ==========================================
+    st.subheader("⏳ Anomalías en Tiempos de Respuesta por Categoría")
+    st.write("Identificación de cuellos de botella: Categorías que exceden el tiempo promedio de cierre.")
+    
+    if date_col and closed_col and complaint_col:
+        # Calcular tiempo de resolución en días
+        df_work['tiempo_resolucion'] = (df_work[closed_col] - df_work[date_col]).dt.total_seconds() / 3600 / 24
+        
+        # Filtrar registros válidos (mayores a cero y no nulos)
+        df_time = df_work[df_work['tiempo_resolucion'] >= 0].dropna(subset=['tiempo_resolucion'])
+        
+        if not df_time.empty:
+            # Agrupar y sacar promedio por tipo de queja
+            df_res_avg = df_time.groupby(complaint_col)['tiempo_resolucion'].mean().reset_index()
+            df_res_avg = df_res_avg.sort_values(by='tiempo_resolucion', ascending=False).head(10)
             
-            # ORDENACIÓN: Total ascendente para que la barra más larga (HEAT/HOT WATER) quede arriba
-            # COLOR SELECTIVO: Solo la barra superior es Roja, el resto Gris
-            colores_quejas = [COLOR_NEUTRO] * len(top_complaints)
-            colores_quejas[-1] = COLOR_FOCO  # La barra con más valor
+            # El top 1 (peor tiempo) se convierte en FIGURA con color de alerta
+            colores_tiempos = [COLOR_NEUTRO] * len(df_res_avg)
+            colores_tiempos[0] = COLOR_FOCO # Al ser descendente, el índice 0 es el peor cuello de botella
             
-            fig = px.bar(top_complaints, x='Cantidad', y='Tipo', orientation='h')
+            fig_perf = px.bar(df_res_avg, x='tiempo_resolucion', y=complaint_col, orientation='h')
+            fig_perf.update_traces(marker_color=colores_tiempos, opacity=0.9)
             
-            fig.update_traces(marker_color=colores_quejas, marker_line_color=colores_quejas, opacity=0.85)
-            fig.update_layout(
-                showlegend=False,
+            # Anotación explícita del peor *insight*
+            peor_categoria = df_res_avg.iloc[0][complaint_col]
+            peor_tiempo = df_res_avg.iloc[0]['tiempo_resolucion']
+            
+            fig_perf.update_layout(
                 plot_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(showgrid=False, title="Número de Reportes"),
-                # SOLUCIÓN: Fusionamos ambas propiedades de yaxis en un único diccionario
-                yaxis=dict(categoryorder='total ascending', title_text="")
+                xaxis=dict(showgrid=True, gridcolor="rgba(100,100,100,0.1)", title="Días Promedio para Cerrar Caso"),
+                yaxis=dict(title_text=""),
+                annotations=[
+                    dict(
+                        x=peor_tiempo, y=peor_categoria,
+                        text=f"🚨 Alerta: <b>{peor_categoria}</b> tarda {peor_tiempo:.1f} días en promedio.",
+                        showarrow=True, arrowhead=1, ax=-60, ay=30,
+                        font=dict(color=COLOR_FOCO, size=11),
+                        bgcolor="rgba(255,255,255,0.9)", bordercolor=COLOR_FOCO, borderwidth=1
+                    )
+                ]
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig_perf, use_container_width=True)
+            
+    st.divider()
 
-    with col_b:
-        st.subheader("Distribución por Distrito (Volumen de Carga)")
-        if borough_col:
-            borough_dist = df_work[borough_col].value_counts().reset_index()
-            borough_dist.columns = ['Distrito', 'Total']
+    # ==========================================
+    # ANÁLISIS 2: MAPA DE CALOR TEMPORAL (PATRONES DE SATURACIÓN)
+    # ==========================================
+    st.subheader("🌡️ Matriz de Densidad: ¿Cuándo colapsa el servicio?")
+    st.write("Detección de concentración de llamadas cruzando hora del día y día de la semana.")
+    
+    if date_col:
+        # Extraer dimensiones de tiempo
+        df_work['Hora'] = df_work[date_col].dt.hour
+        df_work['Dia_Semana'] = df_work[date_col].dt.day_name()
+        
+        # Ordenar días correctamente
+        dias_ordenados = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        
+        # Crear matriz cruzada de conteos
+        df_heatmap = df_work.groupby(['Dia_Semana', 'Hora']).size().reset_index(name='Cantidad')
+        
+        # Pivotar para estructura de mapa de calor nativo
+        df_pivot = df_heatmap.pivot(index='Dia_Semana', columns='Hora', values='Cantidad').reindex(dias_ordenados)
+        
+        # Paleta secuencial limpia: Fondo oscuro a punto caliente vibrante
+        fig_heat = px.imshow(
+            df_pivot,
+            labels=dict(x="Hora del Día (00:00 - 23:00)", y="Día de la Semana", color="Reportes"),
+            x=df_pivot.columns,
+            y=df_pivot.index,
+            color_continuous_scale=["#2D3748", "#4A5568", "#CBD5E0", COLOR_FOCO] # Escala personalizada hacia el rojo
+        )
+        
+        fig_heat.update_layout(
+            plot_bgcolor=COLOR_FONDO_LIGERO,
+            colorcontinuousaxis=dict(showscale=True)
+        )
+        st.plotly_chart(fig_heat, use_container_width=True)
+
+    st.divider()
+
+    # ==========================================
+    # ANÁLISIS 3: RELACIÓN DE VOLUMEN (SCATTER DE DISTRITOS)
+    # ==========================================
+    st.subheader("🎯 Concentración de Carga por Localización")
+    
+    if borough_col and complaint_col:
+        col_c1, col_c2 = st.columns([2, 1])
+        
+        with col_c1:
+            # Cruzar volumen de reportes con variedad de quejas únicas por distrito
+            df_borough_an = df_work.groupby(borough_col).agg(
+                Total_Reportes=(complaint_col, 'count'),
+                Tipos_Unicos_Queja=(complaint_col, 'nunique')
+            ).reset_index()
             
-            # ORDENACIÓN: De mayor a menor volumen
-            borough_dist = borough_dist.sort_values(by='Total', ascending=True)
-            
-            # COLOR SELECTIVO: Destacar BROOKLYN por encima de todos
-            colores_distritos = [
-                COLOR_FOCO if dist == "BROOKLYN" else COLOR_NEUTRO 
-                for dist in borough_dist['Distrito']
+            # Destacar visualmente a Brooklyn (Alta vibrancia) frente al resto (Neutros)
+            colores_scatter = [
+                COLOR_FOCO if b == "BROOKLYN" else COLOR_NEUTRO 
+                for b in df_borough_an[borough_col]
             ]
             
-            # REEMPLAZO DE LA TORA POR GRÁFICO DE BARRAS HORIZONTALES
-            fig = px.bar(borough_dist, x='Total', y='Distrito', orientation='h')
-            
-            fig.update_traces(marker_color=colores_distritos, opacity=0.85)
-            fig.update_layout(
-                showlegend=False,
-                plot_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(showgrid=False, title="Total de Reportes"),
-                yaxis=dict(title_text="")
+            fig_scat = px.scatter(
+                df_borough_an, 
+                x='Total_Reportes', 
+                y='Tipos_Unicos_Queja',
+                text=borough_col,
+                size='Total_Reportes',
+                size_max=30
             )
-            st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-
-    if date_col:
-        st.subheader("Evolución Temporal de Incidentes")
-        df_work[date_col] = pd.to_datetime(df_work[date_col], errors='coerce')
-        df_daily = df_work.groupby(df_work[date_col].dt.date).size().reset_index()
-        df_daily.columns = ['Fecha', 'Total']
-        
-        # Encontrar los puntos estratégicos de atención (Pico máximo y mínimo)
-        idx_max = df_daily['Total'].idxmax()
-        idx_min = df_daily['Total'].idxmin()
-        
-        row_max = df_daily.loc[idx_max]
-        row_min = df_daily.loc[idx_min]
-
-        # Crear la línea base (Neutrase, limpia)
-        fig = px.line(df_daily, x='Fecha', y='Total')
-        fig.update_traces(line_color=COLOR_NEUTRO, line_width=2, name="Tendencia")
-        
-        # INGENIERÍA DE LA ATENCIÓN: Agregar solo los puntos críticos
-        import plotly.graph_objects as go
-        
-        # Punto Máximo (Rojo Estratégico)
-        fig.add_trace(go.Scatter(
-            x=[row_max['Fecha']], 
-            y=[row_max['Total']],
-            mode='markers+text',
-            marker=dict(color=COLOR_FOCO, size=12, line=dict(width=2, color='white')),
-            text=[f"Pico Máximo: {row_max['Total']}"],
-            textposition="top center",
-            textfont=dict(color="white", size=12),
-            name="Máximo Histórico"
-        ))
-        
-        # Punto Mínimo (Azul claro o gris contrastante para diferenciar pero no competir con el rojo)
-        fig.add_trace(go.Scatter(
-            x=[row_min['Fecha']], 
-            y=[row_min['Total']],
-            mode='markers+text',
-            marker=dict(color="#63B3ED", size=10, line=dict(width=2, color='white')),
-            text=[f"Mínimo: {row_min['Total']}"],
-            textposition="bottom center",
-            textfont=dict(color="#A0AEC0", size=11),
-            name="Mínimo Histórico"
-        ))
-        
-        # Optimización de diseño (Data-to-Ink Ratio)
-        fig.update_layout(
-            showlegend=False,
-            plot_bgcolor=COLOR_FONDO_LIGERO,
-            xaxis=dict(showgrid=False, title="Línea de Tiempo"),
-            yaxis=dict(showgrid=True, gridcolor="rgba(200,200,200,0.1)", title_text="Frecuencia Diaria")
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-
-    lat_col = next((col for col in df_work.columns if col.lower() == 'latitude'), None)
-    lon_col = next((col for col in df_work.columns if col.lower() == 'longitude'), None)
-    
-    if lat_col and lon_col:
-        st.subheader("Concentración Geográfica de Incidentes")
-        df_map = df_work.dropna(subset=[lat_col, lon_col]).sample(n=min(5000, len(df_work)))
-        
-        # COLOR SELECTIVO EN MAPA: Puntos en Brooklyn o de calor específicos reciben la atención
-        fig = px.scatter_mapbox(df_map, lat=lat_col, lon=lon_col,
-                                hover_name=complaint_col if complaint_col else None,
-                                zoom=10, height=600, mapbox_style="carto-darkmatter")
-        
-        # Si el distrito es Brooklyn, lo pintamos rojo, si no, gris tenue
-        if borough_col:
-            colores_mapa = [COLOR_FOCO if b == "BROOKLYN" else "#718096" for b in df_map[borough_col]]
-            fig.update_traces(marker=dict(color=colores_mapa, size=4, opacity=0.6))
             
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Nota: Muestra aleatoria de 5,000 registros para optimización de memoria.")
+            fig_scat.update_traces(
+                marker=dict(color=colores_scatter, line=dict(width=1, color='white')),
+                textposition='top center'
+            )
+            
+            fig_scat.update_layout(
+                plot_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(showgrid=True, gridcolor="rgba(100,100,100,0.1)", title="Volumen Total de Incidentes"),
+                yaxis=dict(showgrid=True, gridcolor="rgba(100,100,100,0.1)", title="Diversidad de Problemas (Tipos Únicos)")
+            )
+            st.plotly_chart(fig_scat, use_container_width=True)
+            
+        with col_c2:
+            st.markdown("#### Insight de Distribución")
+            st.info(
+                "Este cuadrante correlaciona la masa crítica de datos con la complejidad operativa. "
+                "**Brooklyn** no solo lidera de forma aislada en volumen total, sino que "
+                "demanda una diversificación casi absoluta de respuestas técnicas, convirtiéndose en el "
+                "núcleo de riesgo para los SLAs de la ciudad."
+            )
