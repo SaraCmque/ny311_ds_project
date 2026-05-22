@@ -82,10 +82,47 @@ def render_dynamic_charts(df: pd.DataFrame):
         df_daily = df_work.groupby(df_work[date_col].dt.date).size().reset_index()
         df_daily.columns = ['Fecha', 'Total']
         
-        # REDUCCIÓN DE RUIDO: Línea limpia sin cuadrículas excesivas
+        # Encontrar los puntos estratégicos de atención (Pico máximo y mínimo)
+        idx_max = df_daily['Total'].idxmax()
+        idx_min = df_daily['Total'].idxmin()
+        
+        row_max = df_daily.loc[idx_max]
+        row_min = df_daily.loc[idx_min]
+
+        # Crear la línea base (Neutrase, limpia)
         fig = px.line(df_daily, x='Fecha', y='Total')
-        fig.update_traces(line_color=COLOR_NEUTRO, line_width=2)
+        fig.update_traces(line_color=COLOR_NEUTRO, line_width=2, name="Tendencia")
+        
+        # INGENIERÍA DE LA ATENCIÓN: Agregar solo los puntos críticos
+        import plotly.graph_objects as go
+        
+        # Punto Máximo (Rojo Estratégico)
+        fig.add_trace(go.Scatter(
+            x=[row_max['Fecha']], 
+            y=[row_max['Total']],
+            mode='markers+text',
+            marker=dict(color=COLOR_FOCO, size=12, line=dict(width=2, color='white')),
+            text=[f"Pico Máximo: {row_max['Total']}"],
+            textposition="top center",
+            textfont=dict(color="white", size=12),
+            name="Máximo Histórico"
+        ))
+        
+        # Punto Mínimo (Azul claro o gris contrastante para diferenciar pero no competir con el rojo)
+        fig.add_trace(go.Scatter(
+            x=[row_min['Fecha']], 
+            y=[row_min['Total']],
+            mode='markers+text',
+            marker=dict(color="#63B3ED", size=10, line=dict(width=2, color='white')),
+            text=[f"Mínimo: {row_min['Total']}"],
+            textposition="bottom center",
+            textfont=dict(color="#A0AEC0", size=11),
+            name="Mínimo Histórico"
+        ))
+        
+        # Optimización de diseño (Data-to-Ink Ratio)
         fig.update_layout(
+            showlegend=False,
             plot_bgcolor=COLOR_FONDO_LIGERO,
             xaxis=dict(showgrid=False, title="Línea de Tiempo"),
             yaxis=dict(showgrid=True, gridcolor="rgba(200,200,200,0.1)", title_text="Frecuencia Diaria")
