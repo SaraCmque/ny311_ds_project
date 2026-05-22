@@ -107,8 +107,8 @@ def render_eda_section(df_eda):
                 # --- NUEVA INYECCIÓN: MAPA DE CONTEXTO ESTADÍSTICO ---
                 try:
                     # Extracción dinámica de las métricas desde la matriz EDA
-                    lat_data = df_g[df_g["columna"].str.lower().contains("latitude")].iloc[0]
-                    lon_data = df_g[df_g["columna"].str.lower().contains("longitude")].iloc[0]
+                    lat_data = df_g[df_g["columna"].str.lower().str.contains("latitude")].iloc[0]
+                    lon_data = df_g[df_g["columna"].str.lower().str.contains("longitude")].iloc[0]
                     
                     lat_min, lat_max, lat_media = float(lat_data["minimo"]), float(lat_data["maximo"]), float(lat_data["media"])
                     lon_min, lon_max, lon_media = float(lon_data["minimo"]), float(lon_data["maximo"]), float(lon_data["media"])
