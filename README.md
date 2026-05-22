@@ -4,7 +4,7 @@ Dashboard interactivo para el análisis de calidad de datos y estadísticas de r
 
 ## 🔗 Acceso
 
-**Disponible en:** [https://ny311dsproyect.streamlit.app/](https://ny311dsproyect.streamlit.app/)
+**Disponible en:** [https://ny311dsproject.streamlit.app/](https://ny311dsproject.streamlit.app/)
 
 ## Características
 
@@ -47,3 +47,5 @@ streamlit run main.py
 - Las gráficas dinámicas usan todos los datos del dataset (200k+ registros)
 - El mapa de incidentes muestra una muestra de hasta 5,000 puntos para optimizar el rendimiento
 - Los datos se actualizan cada 1 hora (TTL en caché)
+
+- 
