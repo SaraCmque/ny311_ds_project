@@ -56,11 +56,25 @@ def render_dynamic_charts(df: pd.DataFrame):
             top_complaints = df_work[complaint_col].value_counts().head(10).reset_index()
             top_complaints.columns = ['Tipo', 'Cantidad']
             
+            idx_max = top_complaints['Cantidad'].idxmax()
             colores_quejas = [COLOR_NEUTRO] * len(top_complaints)
-            colores_quejas[-1] = COLOR_FOCO  # La barra con más valor
+            colores_quejas[idx_max] = COLOR_FOCO  # Resalta la categoría predominante
             
             fig = px.bar(top_complaints, x='Cantidad', y='Tipo', orientation='h')
             fig.update_traces(marker_color=colores_quejas, marker_line_color=colores_quejas, opacity=0.85)
+            
+            fig.add_annotation(
+                x=top_complaints.loc[idx_max, 'Cantidad'],
+                y=top_complaints.loc[idx_max, 'Tipo'],
+                text="Categoría predominante",
+                showarrow=True,
+                arrowhead=3,
+                ax=40,
+                ay=0,
+                font=dict(color=COLOR_FOCO, size=11),
+                arrowcolor=COLOR_FOCO,
+                bgcolor="rgba(255,255,255,0.8)"
+            )
             
             fig.update_layout(
                 showlegend=False,
@@ -766,71 +780,6 @@ def render_dynamic_charts(df: pd.DataFrame):
                 df_cat = df_cat[df_cat['resueltos'] >= 30]  # mínimo estadístico
                 df_cat = df_cat.sort_values('total_incidentes', ascending=False).reset_index(drop=True)
                 df_cat.index += 1
-
-                # ── Gráfica 2: Burbuja — Volumen vs Tiempo promedio ──────────
-                st.subheader("🔵 Panorama General: Volumen de Incidentes vs Tiempo de Resolución")
-                st.write("Cada burbuja es una categoría. El tamaño indica cuántos incidentes tiene. "
-                         "**Arriba a la derecha = muchos incidentes Y tardan mucho en resolverse = zona crítica doble.**")
-
-                fig_bubble = go.Figure()
-                # Umbral para colorear: top 25% en tiempo Y en volumen = crítico doble
-                umbral_vol  = df_cat['total_incidentes'].quantile(0.75)
-                umbral_dias = df_cat['promedio'].quantile(0.75)
-
-                for _, row in df_cat.iterrows():
-                    es_critico = row['total_incidentes'] >= umbral_vol and row['promedio'] >= umbral_dias
-                    color = COLOR_FOCO if es_critico else COLOR_NEUTRO
-                    fig_bubble.add_trace(go.Scatter(
-                        x=[row['promedio']],
-                        y=[row['total_incidentes']],
-                        mode='markers+text',
-                        marker=dict(
-                            size=max(8, min(50, row['total_incidentes'] / df_cat['total_incidentes'].max() * 60)),
-                            color=color,
-                            opacity=0.8,
-                            line=dict(width=1, color="rgba(255,255,255,0.3)")
-                        ),
-                        text=[row[complaint_col][:20]] if es_critico else [""],
-                        textposition="top center",
-                        textfont=dict(color=COLOR_FOCO, size=10),
-                        name=row[complaint_col],
-                        showlegend=False,
-                        hovertemplate=(
-                            f"<b>{row[complaint_col]}</b><br>"
-                            f"Total incidentes: {int(row['total_incidentes']):,}<br>"
-                            f"Promedio resolución: {row['promedio']:.1f}d<br>"
-                            f"Mediana: {row['mediana']:.1f}d<br>"
-                            f"Más rápido: {row['mejor']:.1f}d · Más lento: {row['peor']:.0f}d"
-                            "<extra></extra>"
-                        )
-                    ))
-
-                # Cuadrante crítico
-                fig_bubble.add_shape(type="rect",
-                    x0=umbral_dias, x1=df_cat['promedio'].max() * 1.1,
-                    y0=umbral_vol,  y1=df_cat['total_incidentes'].max() * 1.05,
-                    fillcolor="rgba(217,56,58,0.06)",
-                    line=dict(color=COLOR_FOCO, width=1, dash="dot")
-                )
-                fig_bubble.add_annotation(
-                    x=df_cat['promedio'].max() * 0.95,
-                    y=df_cat['total_incidentes'].max() * 1.02,
-                    text="⚠️ ZONA CRÍTICA DOBLE",
-                    font=dict(color=COLOR_FOCO, size=11),
-                    showarrow=False
-                )
-
-                fig_bubble.update_layout(
-                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                    xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                               title=dict(text="Días Promedio de Resolución", font=dict(color="#A0AEC0", size=11))),
-                    yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                               title=dict(text="Total Incidentes Reportados", font=dict(color="#A0AEC0", size=11))),
-                    height=500
-                )
-                st.plotly_chart(fig_bubble, use_container_width=True)
-
-                st.divider()
 
                 # ── Gráficas 3 y 4: Top categorías por volumen, coloreadas por tiempo ─
                 st.subheader("📊 Top Categorías: Incidentes Reportados y su Tiempo de Resolución")
