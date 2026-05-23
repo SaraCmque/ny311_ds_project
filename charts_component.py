@@ -741,55 +741,217 @@ def render_dynamic_charts(df: pd.DataFrame):
 
             st.divider()
 
-            # ── Gráficas 2 y 3: Peores y mejores tiempos por tipo de queja ─
+            # ── Tabla maestra: todas las categorías con volumen + tiempos ──
             if complaint_col:
+                # Volumen total por categoría (de todo el dataset, no solo los resueltos)
+                df_vol = df_work[complaint_col].value_counts().reset_index()
+                df_vol.columns = [complaint_col, 'total_incidentes']
+
+                # Tiempos de resolución por categoría
                 df_avg_tipo = (
                     df_res.groupby(complaint_col)['dias_resolucion']
-                    .agg(['mean', 'median', 'count'])
+                    .agg(
+                        promedio='mean',
+                        mediana='median',
+                        mejor='min',
+                        peor='max',
+                        resueltos='count'
+                    )
                     .reset_index()
-                    .rename(columns={'mean': 'promedio', 'median': 'mediana', 'count': 'casos'})
                 )
-                df_avg_tipo = df_avg_tipo[df_avg_tipo['casos'] >= 30]  # mínimo estadístico
 
+                # Unir: volumen + tiempos
+                df_cat = df_vol.merge(df_avg_tipo, on=complaint_col, how='left')
+                df_cat = df_cat.dropna(subset=['promedio'])
+                df_cat = df_cat[df_cat['resueltos'] >= 30]  # mínimo estadístico
+                df_cat = df_cat.sort_values('total_incidentes', ascending=False).reset_index(drop=True)
+                df_cat.index += 1
+
+                # ── Gráfica 2: Burbuja — Volumen vs Tiempo promedio ──────────
+                st.subheader("🔵 Panorama General: Volumen de Incidentes vs Tiempo de Resolución")
+                st.write("Cada burbuja es una categoría. El tamaño indica cuántos incidentes tiene. "
+                         "**Arriba a la derecha = muchos incidentes Y tardan mucho en resolverse = zona crítica doble.**")
+
+                fig_bubble = go.Figure()
+                # Umbral para colorear: top 25% en tiempo Y en volumen = crítico doble
+                umbral_vol  = df_cat['total_incidentes'].quantile(0.75)
+                umbral_dias = df_cat['promedio'].quantile(0.75)
+
+                for _, row in df_cat.iterrows():
+                    es_critico = row['total_incidentes'] >= umbral_vol and row['promedio'] >= umbral_dias
+                    color = COLOR_FOCO if es_critico else COLOR_NEUTRO
+                    fig_bubble.add_trace(go.Scatter(
+                        x=[row['promedio']],
+                        y=[row['total_incidentes']],
+                        mode='markers+text',
+                        marker=dict(
+                            size=max(8, min(50, row['total_incidentes'] / df_cat['total_incidentes'].max() * 60)),
+                            color=color,
+                            opacity=0.8,
+                            line=dict(width=1, color="rgba(255,255,255,0.3)")
+                        ),
+                        text=[row[complaint_col][:20]] if es_critico else [""],
+                        textposition="top center",
+                        textfont=dict(color=COLOR_FOCO, size=10),
+                        name=row[complaint_col],
+                        showlegend=False,
+                        hovertemplate=(
+                            f"<b>{row[complaint_col]}</b><br>"
+                            f"Total incidentes: {int(row['total_incidentes']):,}<br>"
+                            f"Promedio resolución: {row['promedio']:.1f}d<br>"
+                            f"Mediana: {row['mediana']:.1f}d<br>"
+                            f"Más rápido: {row['mejor']:.1f}d · Más lento: {row['peor']:.0f}d"
+                            "<extra></extra>"
+                        )
+                    ))
+
+                # Cuadrante crítico
+                fig_bubble.add_shape(type="rect",
+                    x0=umbral_dias, x1=df_cat['promedio'].max() * 1.1,
+                    y0=umbral_vol,  y1=df_cat['total_incidentes'].max() * 1.05,
+                    fillcolor="rgba(217,56,58,0.06)",
+                    line=dict(color=COLOR_FOCO, width=1, dash="dot")
+                )
+                fig_bubble.add_annotation(
+                    x=df_cat['promedio'].max() * 0.95,
+                    y=df_cat['total_incidentes'].max() * 1.02,
+                    text="⚠️ ZONA CRÍTICA DOBLE",
+                    font=dict(color=COLOR_FOCO, size=11),
+                    showarrow=False
+                )
+
+                fig_bubble.update_layout(
+                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                    xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                               title=dict(text="Días Promedio de Resolución", font=dict(color="#A0AEC0", size=11))),
+                    yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                               title=dict(text="Total Incidentes Reportados", font=dict(color="#A0AEC0", size=11))),
+                    height=500
+                )
+                st.plotly_chart(fig_bubble, use_container_width=True)
+
+                st.divider()
+
+                # ── Gráficas 3 y 4: Top categorías por volumen, coloreadas por tiempo ─
+                st.subheader("📊 Top Categorías: Incidentes Reportados y su Tiempo de Resolución")
+                st.write("Las barras están ordenadas por **cantidad de incidentes**. "
+                         "El color de cada barra indica qué tan lento se resuelve esa categoría.")
+
+                df_top20 = df_cat.head(20).sort_values('total_incidentes', ascending=True)
+                # Color: escala de verde (rápido) a rojo (lento) según promedio relativo
+                max_dias = df_top20['promedio'].max()
+                min_dias = df_top20['promedio'].min()
+
+                def dias_a_color(d):
+                    ratio = (d - min_dias) / (max_dias - min_dias + 0.001)
+                    if ratio < 0.25:   return "#00C853"   # Verde: rápido
+                    elif ratio < 0.50: return "#FFD600"   # Amarillo: medio
+                    elif ratio < 0.75: return "#FF9800"   # Naranja: lento
+                    else:              return COLOR_FOCO  # Rojo: muy lento
+
+                colores_vol = [dias_a_color(d) for d in df_top20['promedio']]
+
+                fig_vol = go.Figure()
+                fig_vol.add_trace(go.Bar(
+                    x=df_top20['total_incidentes'],
+                    y=df_top20[complaint_col],
+                    orientation='h',
+                    marker_color=colores_vol,
+                    opacity=0.88,
+                    customdata=df_top20[['promedio', 'mediana', 'mejor', 'peor', 'resueltos']].values,
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "Total incidentes: %{x:,}<br>"
+                        "Prom. resolución: %{customdata[0]:.1f}d<br>"
+                        "Mediana: %{customdata[1]:.1f}d<br>"
+                        "⚡ Más rápido: %{customdata[2]:.1f}d<br>"
+                        "🐢 Más lento: %{customdata[3]:.0f}d<br>"
+                        "Casos resueltos: %{customdata[4]:,}"
+                        "<extra></extra>"
+                    )
+                ))
+                # Leyenda de colores debajo del título
+                fig_vol.update_layout(
+                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                    xaxis=dict(**EJE_X_BASE, showgrid=False,
+                               title=dict(text="Total Incidentes Reportados", font=dict(color="#A0AEC0", size=11))),
+                    yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
+                    showlegend=False,
+                    height=max(420, len(df_top20) * 26)
+                )
+                st.plotly_chart(fig_vol, use_container_width=True)
+                st.markdown(
+                    "<div style='display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;'>"
+                    "<span style='color:#00C853;font-size:12px;'>🟢 Verde = resolución rápida</span>"
+                    "<span style='color:#FFD600;font-size:12px;'>🟡 Amarillo = tiempo medio</span>"
+                    "<span style='color:#FF9800;font-size:12px;'>🟠 Naranja = resolución lenta</span>"
+                    f"<span style='color:{COLOR_FOCO};font-size:12px;'>🔴 Rojo = resolución muy lenta</span>"
+                    "</div>",
+                    unsafe_allow_html=True
+                )
+
+                st.divider()
+
+                # ── Gráficas 5 y 6: Peores y mejores del top de incidentes ──
+                st.subheader("🚨 Peores vs ✅ Mejores Tiempos — dentro de las categorías más reportadas")
+                st.write("Filtrando solo las **20 categorías con más incidentes**, "
+                         "¿cuáles tardan más y cuáles se resuelven más rápido?")
+
+                df_top20_sorted_dias = df_cat.head(20)
                 col_worst, col_best = st.columns(2)
 
                 with col_worst:
-                    st.subheader("🚨 Peores Tiempos por Tipo de Queja")
-                    st.caption("Top 10 categorías con mayor demora promedio.")
-                    df_worst = df_avg_tipo.nlargest(10, 'promedio').sort_values('promedio', ascending=True)
-                    colores_w = [COLOR_NEUTRO] * len(df_worst)
+                    st.markdown(f"<span style='color:{COLOR_FOCO};font-weight:700;'>🚨 Más lentas</span>", unsafe_allow_html=True)
+                    df_w = df_top20_sorted_dias.nlargest(10, 'promedio').sort_values('promedio', ascending=True)
+                    colores_w = [COLOR_NEUTRO] * len(df_w)
                     colores_w[-1] = COLOR_FOCO
-                    fig_worst = px.bar(df_worst, x='promedio', y=complaint_col, orientation='h')
-                    fig_worst.update_traces(marker_color=colores_w, opacity=0.9,
-                                            customdata=df_worst[['mediana', 'casos']],
-                                            hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Mediana: %{customdata[0]:.1f}d<br>Casos: %{customdata[1]:,}<extra></extra>")
-                    fig_worst.update_layout(
+                    fig_w = go.Figure(go.Bar(
+                        x=df_w['promedio'], y=df_w[complaint_col], orientation='h',
+                        marker_color=colores_w, opacity=0.9,
+                        customdata=df_w[['total_incidentes', 'mediana']].values,
+                        hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Incidentes: %{customdata[0]:,}<br>Mediana: %{customdata[1]:.1f}d<extra></extra>"
+                    ))
+                    fig_w.update_layout(
                         plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
                         xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
                                    title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
-                        yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
-                        showlegend=False, height=370
+                        yaxis=dict(**EJE_Y_BASE), showlegend=False, height=380
                     )
-                    st.plotly_chart(fig_worst, use_container_width=True)
+                    st.plotly_chart(fig_w, use_container_width=True)
 
                 with col_best:
-                    st.subheader("✅ Mejores Tiempos por Tipo de Queja")
-                    st.caption("Top 10 categorías resueltas más rápido en promedio.")
-                    df_best = df_avg_tipo.nsmallest(10, 'promedio').sort_values('promedio', ascending=False)
-                    colores_b = ["#00C853"] * len(df_best)
-                    colores_b[0] = "#69F0AE"
-                    fig_best = px.bar(df_best, x='promedio', y=complaint_col, orientation='h')
-                    fig_best.update_traces(marker_color=colores_b, opacity=0.9,
-                                           customdata=df_best[['mediana', 'casos']],
-                                           hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Mediana: %{customdata[0]:.1f}d<br>Casos: %{customdata[1]:,}<extra></extra>")
-                    fig_best.update_layout(
+                    st.markdown("<span style='color:#00C853;font-weight:700;'>✅ Más rápidas</span>", unsafe_allow_html=True)
+                    df_b2 = df_top20_sorted_dias.nsmallest(10, 'promedio').sort_values('promedio', ascending=False)
+                    colores_b2 = ["#00C853"] * len(df_b2)
+                    colores_b2[0] = "#69F0AE"
+                    fig_b2 = go.Figure(go.Bar(
+                        x=df_b2['promedio'], y=df_b2[complaint_col], orientation='h',
+                        marker_color=colores_b2, opacity=0.9,
+                        customdata=df_b2[['total_incidentes', 'mediana']].values,
+                        hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Incidentes: %{customdata[0]:,}<br>Mediana: %{customdata[1]:.1f}d<extra></extra>"
+                    ))
+                    fig_b2.update_layout(
                         plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
                         xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
                                    title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
-                        yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
-                        showlegend=False, height=370
+                        yaxis=dict(**EJE_Y_BASE), showlegend=False, height=380
                     )
-                    st.plotly_chart(fig_best, use_container_width=True)
+                    st.plotly_chart(fig_b2, use_container_width=True)
+
+                st.divider()
+
+                # ── Tabla resumen completa ───────────────────────────────────
+                st.subheader("📋 Tabla Completa: Categorías con Volumen y Tiempos de Resolución")
+                df_tabla = df_cat.copy()
+                df_tabla.columns = [
+                    'Categoría', 'Total Incidentes', 'Prom. Días',
+                    'Mediana Días', 'Mejor (días)', 'Peor (días)', 'Casos Resueltos'
+                ]
+                df_tabla['Prom. Días']    = df_tabla['Prom. Días'].round(1)
+                df_tabla['Mediana Días']  = df_tabla['Mediana Días'].round(1)
+                df_tabla['Mejor (días)']  = df_tabla['Mejor (días)'].round(1)
+                df_tabla['Peor (días)']   = df_tabla['Peor (días)'].round(0).astype(int)
+                st.dataframe(df_tabla, use_container_width=True, height=400)
 
             st.divider()
 
