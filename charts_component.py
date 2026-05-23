@@ -167,6 +167,76 @@ def render_dynamic_charts(df: pd.DataFrame):
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        # ======================================================================
+        # DISTRIBUCIÓN TEMPORAL: DÍA DE LA SEMANA Y DÍA DEL MES
+        # ======================================================================
+        df_work["weekday"] = df_work[date_col].dt.day_name().map({
+            "Monday": "Lunes",
+            "Tuesday": "Martes",
+            "Wednesday": "Miércoles",
+            "Thursday": "Jueves",
+            "Friday": "Viernes",
+            "Saturday": "Sábado",
+            "Sunday": "Domingo"
+        })
+        df_work["day_of_month"] = df_work[date_col].dt.day
+
+        weekday_dist = (
+            df_work.groupby("weekday")
+            .size()
+            .reset_index(name="Total")
+        )
+        weekday_order = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        weekday_dist["weekday"] = pd.Categorical(weekday_dist["weekday"], categories=weekday_order, ordered=True)
+        weekday_dist = weekday_dist.sort_values("weekday")
+
+        day_of_month_dist = (
+            df_work.groupby("day_of_month")
+            .size()
+            .reset_index(name="Total")
+            .sort_values("day_of_month")
+        )
+
+        st.subheader("Patrones por Día de la Semana y Día del Mes")
+        row_weekday, row_monthday = st.columns(2)
+
+        with row_weekday:
+            fig_weekday = px.bar(weekday_dist, x="Total", y="weekday", orientation="h")
+            fig_weekday.update_traces(marker_color=COLOR_NEUTRO, opacity=0.85)
+            fig_weekday.update_layout(
+                showlegend=False,
+                plot_bgcolor=COLOR_FONDO_LIGERO,
+                paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis={
+                    **EJE_X_BASE,
+                    "showgrid": False,
+                    "title": {"text": "Total de Reportes", "font": {"color": "#A0AEC0", "size": 11}}
+                },
+                yaxis={
+                    **EJE_Y_BASE,
+                    "title": {"text": "Día de la Semana", "font": {"color": "#A0AEC0", "size": 11}}
+                }
+            )
+            st.plotly_chart(fig_weekday, use_container_width=True)
+
+        with row_monthday:
+            fig_day = px.bar(day_of_month_dist, x="day_of_month", y="Total")
+            fig_day.update_traces(marker_color=COLOR_NEUTRO, opacity=0.85)
+            fig_day.update_layout(
+                showlegend=False,
+                plot_bgcolor=COLOR_FONDO_LIGERO,
+                paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis={
+                    **EJE_X_BASE,
+                    "title": {"text": "Día del Mes", "font": {"color": "#A0AEC0", "size": 11}}
+                },
+                yaxis={
+                    **EJE_Y_BASE,
+                    "title": {"text": "Total de Reportes", "font": {"color": "#A0AEC0", "size": 11}}
+                }
+            )
+            st.plotly_chart(fig_day, use_container_width=True)
+
     st.divider()
 
     # ======================================================================
