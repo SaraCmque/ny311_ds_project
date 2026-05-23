@@ -560,10 +560,7 @@ def render_dynamic_charts(df: pd.DataFrame):
 
             with tabs[0]:
                 df_all = styled_ranking(df_district_full)
-                st.dataframe(
-                    df_all.style.background_gradient(subset=['Total Incidentes'], cmap='YlOrRd'),
-                    use_container_width=True, height=400
-                )
+                st.dataframe(df_all, use_container_width=True, height=400)
 
             for i, (boro_code, boro_name) in enumerate(sorted(BORO_NAMES.items()), start=1):
                 with tabs[i]:
@@ -586,8 +583,7 @@ def render_dynamic_charts(df: pd.DataFrame):
                         unsafe_allow_html=True
                     )
                     st.dataframe(
-                        df_show[['Distrito', 'Total Incidentes', 'Queja Más Frecuente']]
-                        .style.background_gradient(subset=['Total Incidentes'], cmap='YlOrRd'),
+                        df_show[['Distrito', 'Total Incidentes', 'Queja Más Frecuente']],
                         use_container_width=True
                     )
             st.caption(f"71 Community Districts · Columna detectada: '{community_col}' · Muestra de 5,000 puntos")
