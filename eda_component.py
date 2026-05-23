@@ -48,7 +48,7 @@ def render_eda_section(df_eda):
     COLOR_FONDO_NEUTRO = "#2D3748"  # Gris apagado (Mantiene la historia en el fondo)
     COLOR_ANOMALIA = "#FF0055"      # Neón de alta vibrancia (Demanda atención inmediata)
     
-    tab_cats, tab_geo, tab_time = st.tabs(["🏷️ Categorías Principales", "📍 Ubicación (NYC)", "📅 Tiempos & Anomalías"])
+    tab_cats, tab_time = st.tabs(["🏷️ Categorías Principales", "📅 Tiempos & Anomalías"])
 
     with tab_cats:
         st.subheader("Concentración e Impacto de Modas")
