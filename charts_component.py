@@ -669,3 +669,227 @@ def render_dynamic_charts(df: pd.DataFrame):
                         use_container_width=True
                     )
             st.caption(f"71 Community Districts · Columna detectada: '{community_col}' · Muestra de 5,000 puntos")
+
+    st.divider()
+
+    # ======================================================================
+    # SECCIÓN: ANÁLISIS DE RESOLUCIÓN DE INCIDENTES
+    # ======================================================================
+    resolution_date_col = next(
+        (col for col in df_work.columns if 'resolution' in col.lower() and 'date' in col.lower()),
+        next((col for col in df_work.columns if 'action' in col.lower() and 'date' in col.lower()), None)
+    )
+    resolution_desc_col = next(
+        (col for col in df_work.columns if 'resolution' in col.lower() and 'description' in col.lower()), None
+    )
+
+    if resolution_date_col and date_col:
+        st.header("⚙️ Análisis de Resolución de Incidentes")
+        st.write("Tiempos de cierre y patrones de resolución extraídos del campo *Resolution Action Updated Date*.")
+
+        df_res = df_work.copy()
+        df_res[resolution_date_col] = pd.to_datetime(df_res[resolution_date_col], errors='coerce')
+        df_res['horas_resolucion'] = (
+            df_res[resolution_date_col] - df_res[date_col]
+        ).dt.total_seconds() / 3600
+
+        # Filtrar: solo tiempos positivos y razonables (< 1 año = 8760h)
+        df_res = df_res[(df_res['horas_resolucion'] > 0) & (df_res['horas_resolucion'] < 8760)].copy()
+        df_res['dias_resolucion'] = df_res['horas_resolucion'] / 24
+
+        if df_res.empty:
+            st.info("No hay suficientes datos con fechas de resolución válidas.")
+        else:
+            # ── KPIs globales ───────────────────────────────────────────────
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("⏱ Tiempo Mediano", f"{df_res['dias_resolucion'].median():.1f} días")
+            k2.metric("⚡ Resolución Más Rápida", f"{df_res['horas_resolucion'].min():.1f} h")
+            k3.metric("🐢 Resolución Más Lenta", f"{df_res['dias_resolucion'].max():.0f} días")
+            k4.metric("📊 Promedio General", f"{df_res['dias_resolucion'].mean():.1f} días")
+
+            st.divider()
+
+            # ── Gráfica 1: Distribución de tiempos (histograma) ────────────
+            st.subheader("📊 Distribución del Tiempo de Resolución")
+            df_hist = df_res[df_res['dias_resolucion'] <= 60]  # zoom: primeros 60 días
+            fig_hist = go.Figure()
+            fig_hist.add_trace(go.Histogram(
+                x=df_hist['dias_resolucion'],
+                nbinsx=60,
+                marker_color=COLOR_NEUTRO,
+                opacity=0.85,
+                name="Distribución"
+            ))
+            # Línea de mediana
+            mediana = df_res['dias_resolucion'].median()
+            fig_hist.add_vline(
+                x=mediana, line_dash="dash", line_color=COLOR_FOCO, line_width=2,
+                annotation_text=f"Mediana: {mediana:.1f}d",
+                annotation_font_color=COLOR_FOCO,
+                annotation_position="top right"
+            )
+            fig_hist.update_layout(
+                plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(**EJE_X_BASE, showgrid=False,
+                           title=dict(text="Días hasta Resolución", font=dict(color="#A0AEC0", size=11))),
+                yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                           title=dict(text="Cantidad de Incidentes", font=dict(color="#A0AEC0", size=11))),
+                showlegend=False, height=350
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
+            st.caption("Vista limitada a los primeros 60 días para mejor lectura. La línea roja marca la mediana.")
+
+            st.divider()
+
+            # ── Gráficas 2 y 3: Peores y mejores tiempos por tipo de queja ─
+            if complaint_col:
+                df_avg_tipo = (
+                    df_res.groupby(complaint_col)['dias_resolucion']
+                    .agg(['mean', 'median', 'count'])
+                    .reset_index()
+                    .rename(columns={'mean': 'promedio', 'median': 'mediana', 'count': 'casos'})
+                )
+                df_avg_tipo = df_avg_tipo[df_avg_tipo['casos'] >= 30]  # mínimo estadístico
+
+                col_worst, col_best = st.columns(2)
+
+                with col_worst:
+                    st.subheader("🚨 Peores Tiempos por Tipo de Queja")
+                    st.caption("Top 10 categorías con mayor demora promedio.")
+                    df_worst = df_avg_tipo.nlargest(10, 'promedio').sort_values('promedio', ascending=True)
+                    colores_w = [COLOR_NEUTRO] * len(df_worst)
+                    colores_w[-1] = COLOR_FOCO
+                    fig_worst = px.bar(df_worst, x='promedio', y=complaint_col, orientation='h')
+                    fig_worst.update_traces(marker_color=colores_w, opacity=0.9,
+                                            customdata=df_worst[['mediana', 'casos']],
+                                            hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Mediana: %{customdata[0]:.1f}d<br>Casos: %{customdata[1]:,}<extra></extra>")
+                    fig_worst.update_layout(
+                        plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                                   title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
+                        yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
+                        showlegend=False, height=370
+                    )
+                    st.plotly_chart(fig_worst, use_container_width=True)
+
+                with col_best:
+                    st.subheader("✅ Mejores Tiempos por Tipo de Queja")
+                    st.caption("Top 10 categorías resueltas más rápido en promedio.")
+                    df_best = df_avg_tipo.nsmallest(10, 'promedio').sort_values('promedio', ascending=False)
+                    colores_b = ["#00C853"] * len(df_best)
+                    colores_b[0] = "#69F0AE"
+                    fig_best = px.bar(df_best, x='promedio', y=complaint_col, orientation='h')
+                    fig_best.update_traces(marker_color=colores_b, opacity=0.9,
+                                           customdata=df_best[['mediana', 'casos']],
+                                           hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Mediana: %{customdata[0]:.1f}d<br>Casos: %{customdata[1]:,}<extra></extra>")
+                    fig_best.update_layout(
+                        plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                                   title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
+                        yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
+                        showlegend=False, height=370
+                    )
+                    st.plotly_chart(fig_best, use_container_width=True)
+
+            st.divider()
+
+            # ── Gráfica 4: Evolución del tiempo de resolución en el tiempo ─
+            st.subheader("📈 Evolución del Tiempo Promedio de Resolución")
+            st.caption("¿Ha mejorado o empeorado la velocidad de respuesta a lo largo del período?")
+            df_res['mes'] = df_res[date_col].dt.to_period('M').astype(str)
+            df_evol = (
+                df_res.groupby('mes')['dias_resolucion']
+                .agg(['mean', 'median'])
+                .reset_index()
+                .rename(columns={'mean': 'Promedio', 'median': 'Mediana'})
+                .sort_values('mes')
+            )
+            fig_evol = go.Figure()
+            fig_evol.add_trace(go.Scatter(
+                x=df_evol['mes'], y=df_evol['Promedio'],
+                mode='lines+markers', name='Promedio',
+                line=dict(color=COLOR_FOCO, width=2),
+                marker=dict(size=6, color=COLOR_FOCO)
+            ))
+            fig_evol.add_trace(go.Scatter(
+                x=df_evol['mes'], y=df_evol['Mediana'],
+                mode='lines+markers', name='Mediana',
+                line=dict(color="#63B3ED", width=2, dash='dot'),
+                marker=dict(size=5, color="#63B3ED")
+            ))
+            fig_evol.update_layout(
+                plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(**EJE_X_BASE, showgrid=False,
+                           title=dict(text="Mes", font=dict(color="#A0AEC0", size=11)),
+                           tickangle=-35),
+                yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                           title=dict(text="Días hasta Resolución", font=dict(color="#A0AEC0", size=11))),
+                legend=dict(font=dict(color="#A0AEC0"), bgcolor="rgba(0,0,0,0)"),
+                height=380
+            )
+            st.plotly_chart(fig_evol, use_container_width=True)
+
+            st.divider()
+
+            # ── Gráfica 5: Análisis por descripción de resolución ──────────
+            if resolution_desc_col:
+                st.subheader("📋 Descripción de Resolución vs Tiempo Promedio")
+                st.caption("Qué acciones de resolución toman más tiempo en promedio.")
+                df_desc_avg = (
+                    df_res.groupby(resolution_desc_col)['dias_resolucion']
+                    .agg(['mean', 'count'])
+                    .reset_index()
+                    .rename(columns={'mean': 'promedio', 'count': 'casos'})
+                )
+                df_desc_avg = df_desc_avg[df_desc_avg['casos'] >= 20]\
+                    .nlargest(12, 'promedio')\
+                    .sort_values('promedio', ascending=True)
+
+                # Truncar textos largos
+                df_desc_avg['desc_short'] = df_desc_avg[resolution_desc_col].str[:55] + "…"
+
+                colores_desc = [COLOR_NEUTRO] * len(df_desc_avg)
+                colores_desc[-1] = COLOR_FOCO
+
+                fig_desc = px.bar(df_desc_avg, x='promedio', y='desc_short', orientation='h')
+                fig_desc.update_traces(
+                    marker_color=colores_desc, opacity=0.88,
+                    customdata=df_desc_avg[[resolution_desc_col, 'casos']],
+                    hovertemplate="<b>%{customdata[0]}</b><br>Promedio: %{x:.1f}d<br>Casos: %{customdata[1]:,}<extra></extra>"
+                )
+                fig_desc.update_layout(
+                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                    xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                               title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
+                    yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
+                    showlegend=False,
+                    height=max(350, len(df_desc_avg) * 32)
+                )
+                st.plotly_chart(fig_desc, use_container_width=True)
+
+            # ── Gráfica 6: Box plot por borough ─────────────────────────────
+            if borough_col:
+                st.subheader("📦 Variabilidad del Tiempo de Resolución por Borough")
+                st.caption("Distribución completa (mediana, percentiles y outliers) por zona.")
+                df_box = df_res[df_res['dias_resolucion'] <= 90].dropna(subset=[borough_col])
+                fig_box = go.Figure()
+                borough_order = df_box.groupby(borough_col)['dias_resolucion'].median()\
+                                      .sort_values(ascending=False).index.tolist()
+                for boro in borough_order:
+                    vals = df_box[df_box[borough_col] == boro]['dias_resolucion']
+                    fig_box.add_trace(go.Box(
+                        y=vals, name=boro,
+                        marker_color=COLOR_FOCO if vals.median() == df_box.groupby(borough_col)['dias_resolucion'].median().max() else COLOR_NEUTRO,
+                        line_color="#A0AEC0",
+                        fillcolor="rgba(74,85,104,0.3)",
+                        boxmean=True
+                    ))
+                fig_box.update_layout(
+                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                    xaxis=dict(**EJE_X_BASE, title=dict(text="Borough", font=dict(color="#A0AEC0", size=11))),
+                    yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
+                               title=dict(text="Días hasta Resolución", font=dict(color="#A0AEC0", size=11))),
+                    showlegend=False, height=420
+                )
+                st.plotly_chart(fig_box, use_container_width=True)
+                st.caption("Vista limitada a 90 días. La 'X' dentro de la caja indica el promedio.")
