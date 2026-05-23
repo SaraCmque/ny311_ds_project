@@ -110,69 +110,6 @@ def render_eda_section(df_eda):
             else:
                 st.info("No hay datos categóricos disponibles.")
 
-    with tab_geo:
-        st.subheader("Límites de Cobertura Geográfica")
-        df_g = df_eda[df_eda["columna"].str.lower().str.contains("latitude|longitude")]
-        
-        if not df_g.empty:
-            if validate_columns(df_g, EXPECTED_COLUMNS["geo"], "geográfica"):
-                # 1. Renderizar la matriz EDA de origen
-                st.dataframe(df_g[["columna", "minimo", "maximo", "media"]], use_container_width=True)
-                
-                # --- NUEVA INYECCIÓN: MAPA DE CONTEXTO ESTADÍSTICO ---
-                try:
-                    # Extracción dinámica de las métricas desde la matriz EDA
-                    lat_data = df_g[df_g["columna"].str.lower().str.contains("latitude")].iloc[0]
-                    lon_data = df_g[df_g["columna"].str.lower().str.contains("longitude")].iloc[0]
-                    
-                    lat_min, lat_max, lat_media = float(lat_data["minimo"]), float(lat_data["maximo"]), float(lat_data["media"])
-                    lon_min, lon_max, lon_media = float(lon_data["minimo"]), float(lon_data["maximo"]), float(lon_data["media"])
-                    
-                    # Estructuramos los puntos críticos para el mapa de control
-                    puntos_control = pd.DataFrame({
-                        "Tipo de Límite": [
-                            "📍 Centro de Gravedad (Media)", 
-                            "📉 Límite Suroeste (Mínimos)", 
-                            "📈 Límite Noreste (Máximos)"
-                        ],
-                        "Latitude": [lat_media, lat_min, lat_max],
-                        "Longitude": [lon_media, lon_min, lon_max],
-                        "Color": [COLOR_ANOMALIA, "#4A5568", "#4A5568"], # Foco en la media, control en extremos
-                        "Tamaño": [14, 10, 10]
-                    })
-                    
-                    # Crear mapa base centrado en la media calculada de NYC
-                    fig_geo = px.scatter_mapbox(
-                        puntos_control, 
-                        lat="Latitude", 
-                        lon="Longitude",
-                        hover_name="Tipo de Límite",
-                        hover_data={"Latitude": ":.4f", "Longitude": ":.4f", "Color": False, "Tamaño": False},
-                        zoom=10, 
-                        height=450, 
-                        mapbox_style="carto-darkmatter"
-                    )
-                    
-                    # Aplicar personalización de colores estratégica (Ingeniería de la Atención)
-                    fig_geo.update_traces(
-                        marker=dict(
-                            color=puntos_control["Color"], 
-                            size=puntos_control["Tamaño"],
-                            opacity=0.9
-                        )
-                    )
-                    
-                    fig_geo.update_layout(margin=dict(t=10, b=10, l=10, r=10))
-                    
-                    st.markdown("### 🗺️ Encuadre y Centro de Gravedad de Incidentes")
-                    st.plotly_chart(fig_geo, use_container_width=True)
-                    st.caption("Visualización de control operacional: Puntos extremos calculados (Mín/Máx) y centroide (Media).")
-                    
-                except Exception as e:
-                    st.caption(f"error: {e}")
-        else:
-            st.info("No hay datos geográficos disponibles.")
-
     with tab_time:
         st.subheader("Análisis de Quiebre de Tendencia (Detección de Anomalías)")
         df_t = df_eda[df_eda["columna"].str.lower().str.contains("date")]
