@@ -428,6 +428,34 @@ def render_dynamic_charts(df: pd.DataFrame):
             fig_cd_fall.update_layout(margin=dict(t=10,b=10,l=10,r=10), paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_cd_fall, use_container_width=True)
         else:
+            # ── Control de filtro de criticidad ────────────────────────────
+            col_toggle, col_desc = st.columns([0.35, 0.65])
+            with col_toggle:
+                solo_criticos = st.toggle(
+                    "🔴 Solo zonas críticas",
+                    value=False,
+                    help="Activa para ocultar distritos de baja carga y resaltar solo los más saturados."
+                )
+            with col_desc:
+                if solo_criticos:
+                    st.markdown(
+                        "<div style='padding:8px 12px;background:rgba(217,56,58,0.12);"
+                        "border-left:3px solid #FF0055;border-radius:4px;margin-top:4px;'>"
+                        "<span style='color:#FF0055;font-size:12px;font-weight:700;'>MODO CRÍTICO ACTIVO</span>"
+                        "<span style='color:#A0AEC0;font-size:12px;'> · Solo se muestran los distritos en el top 30% de incidentes por borough.</span>"
+                        "</div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        "<div style='padding:8px 12px;background:rgba(74,85,104,0.12);"
+                        "border-left:3px solid #4A5568;border-radius:4px;margin-top:4px;'>"
+                        "<span style='color:#A0AEC0;font-size:12px;'>Todos los distritos visibles · "
+                        "Activa el botón para resaltar solo las zonas más críticas.</span>"
+                        "</div>",
+                        unsafe_allow_html=True
+                    )
+
             # Asignar color por borough y opacidad/z por incidentes
             max_inc = df_freq_cd['incidentes'].max()
 
@@ -435,11 +463,18 @@ def render_dynamic_charts(df: pd.DataFrame):
             fig_cd = go.Figure()
 
             for boro_code, boro_name in BORO_NAMES.items():
-                df_b = df_freq_cd[df_freq_cd['boro_code'] == boro_code]
+                df_b = df_freq_cd[df_freq_cd['boro_code'] == boro_code].copy()
                 if df_b.empty:
                     continue
 
                 boro_max = df_b['incidentes'].max() if not df_b.empty else 1
+
+                if solo_criticos:
+                    # Umbral: percentil 70 dentro del borough → solo muestra el top 30%
+                    umbral = df_b['incidentes'].quantile(0.70)
+                    df_b = df_b[df_b['incidentes'] >= umbral]
+                    if df_b.empty:
+                        continue
                 fig_cd.add_trace(go.Choroplethmapbox(
                     geojson=geojson_cd,
                     locations=df_b['borocd'],
@@ -461,7 +496,15 @@ def render_dynamic_charts(df: pd.DataFrame):
 
             # Puntos superpuestos (muestra) coloreados por borough
             if lat_col and lon_col:
-                df_pts = df_cd.dropna(subset=[lat_col, lon_col]).sample(n=min(5000, len(df_cd)))
+                df_pts_src = df_cd.dropna(subset=[lat_col, lon_col])
+                if solo_criticos:
+                    # Solo puntos de distritos críticos (top 30% global)
+                    umbral_global = df_freq_cd['incidentes'].quantile(0.70)
+                    distritos_criticos = set(
+                        df_freq_cd[df_freq_cd['incidentes'] >= umbral_global]['borocd'].astype(int).tolist()
+                    )
+                    df_pts_src = df_pts_src[df_pts_src['borocd'].astype(int).isin(distritos_criticos)]
+                df_pts = df_pts_src.sample(n=min(5000, len(df_pts_src))) if not df_pts_src.empty else df_pts_src
                 colores_pts = [BORO_COLOR.get(int(b) // 100, "#718096") for b in df_pts['borocd']]
 
                 fig_cd.add_trace(go.Scattermapbox(
