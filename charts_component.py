@@ -500,41 +500,94 @@ def render_dynamic_charts(df: pd.DataFrame):
             )
             st.plotly_chart(fig_cd, use_container_width=True)
 
-            # Tabla resumen por borough
-            df_summary = (
-                df_freq_cd.groupby('boro_code')['incidentes']
-                .sum()
-                .reset_index()
+            # ── Leyenda de colores ──────────────────────────────────────────
+            leyenda_items = "".join([
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+                f'<div style="width:48px;height:14px;border-radius:3px;'
+                f'background:linear-gradient(to right,{BORO_SCALES[k][1][1]},{BORO_SCALES[k][-1][1]});"></div>'
+                f'<span style="color:#E2E8F0;font-size:13px;"><b>{v}</b> — pálido = poco · saturado = mucho</span></div>'
+                for k, v in BORO_NAMES.items()
+            ])
+            st.markdown(
+                f"""
+                <div style="padding:12px 16px; border-left:4px solid #4A5568;
+                            background:rgba(74,85,104,0.08); border-radius:4px; margin-bottom:18px;">
+                    <span style="color:#E2E8F0; font-size:12px; font-weight:700; letter-spacing:1px;">LEYENDA DE COLORES</span><br><br>
+                    {leyenda_items}
+                </div>
+                """,
+                unsafe_allow_html=True
             )
-            df_summary['Borough'] = df_summary['boro_code'].map(BORO_NAMES)
-            df_summary = df_summary.rename(columns={'incidentes': 'Total Incidentes'})\
-                                   .sort_values('Total Incidentes', ascending=False)\
-                                   .reset_index(drop=True)[['Borough', 'Total Incidentes']]
-            df_summary.index += 1
 
-            col_tbl, col_leg = st.columns([0.35, 0.65])
-            with col_tbl:
-                st.markdown("**Ranking por Borough**")
-                st.dataframe(df_summary, use_container_width=True)
-            with col_leg:
-                leyenda_items = "".join([
-                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-                    f'<div style="width:48px;height:14px;border-radius:3px;'
-                    f'background:linear-gradient(to right,{BORO_SCALES[k][1][1]},{BORO_SCALES[k][-1][1]});"></div>'
-                    f'<span style="color:#E2E8F0;font-size:13px;"><b>{v}</b> — pálido (poco) → intenso (mucho)</span></div>'
-                    for k, v in BORO_NAMES.items()
-                ])
-                st.markdown(
-                    f"""
-                    <div style="padding:14px; border-left:4px solid #4A5568;
-                                background:rgba(74,85,104,0.08); border-radius:4px; margin-top:6px;">
-                        <span style="color:#E2E8F0; font-size:12px; font-weight:700; letter-spacing:1px;">LEYENDA DE COLORES</span><br><br>
-                        {leyenda_items}
-                        <div style="margin-top:8px; color:#A0AEC0; font-size:12px;">
-                            Dentro de cada borough: <b style="color:white;">tono pálido</b> = pocos incidentes · <b style="color:white;">tono saturado</b> = muchos incidentes
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+            # ── Ranking por distrito dentro de cada Borough ─────────────────
+            st.markdown("### 🏆 Ranking de Distritos por Borough")
+            st.write("Top distritos con más incidentes y el tipo de queja más frecuente en cada uno.")
+
+            # Construir tabla enriquecida: borocd + incidentes + queja más común
+            if complaint_col:
+                df_district_detail = (
+                    df_cd.groupby(['borocd', 'boro_code', complaint_col])
+                    .size()
+                    .reset_index(name='cnt')
                 )
+                # Queja más común por distrito
+                idx_top = df_district_detail.groupby('borocd')['cnt'].idxmax()
+                df_top_complaint = df_district_detail.loc[idx_top][['borocd', complaint_col]]\
+                                                     .rename(columns={complaint_col: 'Queja Más Frecuente'})
+                df_district_full = df_freq_cd.merge(df_top_complaint, on='borocd', how='left')
+            else:
+                df_district_full = df_freq_cd.copy()
+                df_district_full['Queja Más Frecuente'] = 'N/A'
+
+            df_district_full['Borough'] = df_district_full['boro_code'].map(BORO_NAMES)
+            df_district_full['Distrito'] = df_district_full['borocd'].astype(str)
+            df_district_full = df_district_full.rename(columns={'incidentes': 'Total Incidentes'})
+
+            # Tabs: uno por borough + uno global
+            tab_labels = ["🌆 Todos"] + [f"{BORO_NAMES[k]}" for k in sorted(BORO_NAMES.keys())]
+            tabs = st.tabs(tab_labels)
+
+            BORO_ACCENT = {1: "#FFCA28", 2: "#00E676", 3: "#1E88E5", 4: "#E91E63", 5: "#AB47BC"}
+
+            def styled_ranking(df_in, accent="#D9383A"):
+                df_show = (
+                    df_in[['Distrito', 'Borough', 'Total Incidentes', 'Queja Más Frecuente']]
+                    .sort_values('Total Incidentes', ascending=False)
+                    .reset_index(drop=True)
+                )
+                df_show.index += 1
+                return df_show
+
+            with tabs[0]:
+                df_all = styled_ranking(df_district_full)
+                st.dataframe(
+                    df_all.style.background_gradient(subset=['Total Incidentes'], cmap='YlOrRd'),
+                    use_container_width=True, height=400
+                )
+
+            for i, (boro_code, boro_name) in enumerate(sorted(BORO_NAMES.items()), start=1):
+                with tabs[i]:
+                    df_b = df_district_full[df_district_full['boro_code'] == boro_code]
+                    if df_b.empty:
+                        st.info(f"Sin datos para {boro_name}.")
+                        continue
+                    df_show = styled_ranking(df_b, accent=BORO_ACCENT.get(boro_code, "#fff"))
+
+                    top_district = df_show.iloc[0]
+                    accent = BORO_ACCENT.get(boro_code, "#fff")
+                    st.markdown(
+                        f"""<div style="padding:10px 14px;border-left:4px solid {accent};
+                            background:rgba(0,0,0,0.15);border-radius:4px;margin-bottom:12px;">
+                            <span style="color:{accent};font-size:12px;font-weight:700;">DISTRITO MÁS CRÍTICO</span><br>
+                            <span style="font-size:22px;font-weight:800;color:white;">Distrito {top_district['Distrito']}</span>
+                            <span style="color:#A0AEC0;font-size:13px;margin-left:10px;">{int(top_district['Total Incidentes']):,} incidentes</span><br>
+                            <span style="color:#A0AEC0;font-size:13px;">Queja dominante: <b style="color:white;">{top_district['Queja Más Frecuente']}</b></span>
+                        </div>""",
+                        unsafe_allow_html=True
+                    )
+                    st.dataframe(
+                        df_show[['Distrito', 'Total Incidentes', 'Queja Más Frecuente']]
+                        .style.background_gradient(subset=['Total Incidentes'], cmap='YlOrRd'),
+                        use_container_width=True
+                    )
             st.caption(f"71 Community Districts · Columna detectada: '{community_col}' · Muestra de 5,000 puntos")
