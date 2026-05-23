@@ -521,6 +521,45 @@ def render_dynamic_charts(df: pd.DataFrame):
 
             # ── Ranking por distrito dentro de cada Borough ─────────────────
             st.markdown("### 🏆 Ranking de Distritos por Borough")
+
+            # Tarjeta FOCO CRÍTICO OPERATIVO: queja más repetida en todo el dataset
+            if complaint_col:
+                queja_global = df_cd[complaint_col].value_counts()
+                complaint_moda   = queja_global.index[0] if not queja_global.empty else "N/A"
+                # Descriptor más común asociado a esa queja
+                descriptor_col = next((c for c in df_cd.columns if 'descriptor' in c.lower()), None)
+                if descriptor_col:
+                    descriptor_moda = (
+                        df_cd[df_cd[complaint_col] == complaint_moda][descriptor_col]
+                        .value_counts().index[0]
+                        if not df_cd[df_cd[complaint_col] == complaint_moda].empty else "N/A"
+                    )
+                else:
+                    descriptor_moda = "N/A"
+
+                st.markdown(
+                    f"""
+                    <div style="
+                        background-color: rgba(217, 56, 58, 0.08);
+                        border-left: 5px solid #FF0055;
+                        padding: 20px;
+                        border-radius: 6px;
+                        margin-bottom: 22px;
+                        border-top: 1px solid rgba(217, 56, 58, 0.2);
+                        border-right: 1px solid rgba(217, 56, 58, 0.2);
+                        border-bottom: 1px solid rgba(217, 56, 58, 0.2);
+                    ">
+                        <span style="color:#FF0055; font-size:13px; font-weight:bold; letter-spacing:1px;">🚨 FOCO CRÍTICO OPERATIVO</span>
+                        <h2 style="margin: 5px 0 0 0; font-size: 30px; font-weight: 800; color: #FF0055;">{complaint_moda}</h2>
+                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #718096;">
+                            Esta es la categoría con mayor recurrencia en toda la ciudad.
+                            Específicamente bajo la modalidad de: <b>{descriptor_moda}</b>.
+                        </p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
             st.write("Top distritos con más incidentes y el tipo de queja más frecuente en cada uno.")
 
             # Construir tabla enriquecida: borocd + incidentes + queja más común
