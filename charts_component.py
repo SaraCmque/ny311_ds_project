@@ -904,44 +904,6 @@ def render_dynamic_charts(df: pd.DataFrame):
 
             st.divider()
 
-            # ── Gráfica 4: Evolución del tiempo de resolución en el tiempo ─
-            st.subheader("📈 Evolución del Tiempo Promedio de Resolución")
-            st.caption("¿Ha mejorado o empeorado la velocidad de respuesta a lo largo del período?")
-            df_res['mes'] = df_res[date_col].dt.to_period('M').astype(str)
-            df_evol = (
-                df_res.groupby('mes')['dias_resolucion']
-                .agg(['mean', 'median'])
-                .reset_index()
-                .rename(columns={'mean': 'Promedio', 'median': 'Mediana'})
-                .sort_values('mes')
-            )
-            fig_evol = go.Figure()
-            fig_evol.add_trace(go.Scatter(
-                x=df_evol['mes'], y=df_evol['Promedio'],
-                mode='lines+markers', name='Promedio',
-                line=dict(color=COLOR_FOCO, width=2),
-                marker=dict(size=6, color=COLOR_FOCO)
-            ))
-            fig_evol.add_trace(go.Scatter(
-                x=df_evol['mes'], y=df_evol['Mediana'],
-                mode='lines+markers', name='Mediana',
-                line=dict(color="#63B3ED", width=2, dash='dot'),
-                marker=dict(size=5, color="#63B3ED")
-            ))
-            fig_evol.update_layout(
-                plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(**EJE_X_BASE, showgrid=False,
-                           title=dict(text="Mes", font=dict(color="#A0AEC0", size=11)),
-                           tickangle=-35),
-                yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                           title=dict(text="Días hasta Resolución", font=dict(color="#A0AEC0", size=11))),
-                legend=dict(font=dict(color="#A0AEC0"), bgcolor="rgba(0,0,0,0)"),
-                height=380
-            )
-            st.plotly_chart(fig_evol, use_container_width=True)
-
-            st.divider()
-
             # ── Gráfica 5: Análisis por descripción de resolución ──────────
             if resolution_desc_col:
                 st.subheader("📋 Descripción de Resolución vs Tiempo Promedio")
@@ -977,30 +939,3 @@ def render_dynamic_charts(df: pd.DataFrame):
                     height=max(350, len(df_desc_avg) * 32)
                 )
                 st.plotly_chart(fig_desc, use_container_width=True)
-
-            # ── Gráfica 6: Box plot por borough ─────────────────────────────
-            if borough_col:
-                st.subheader("📦 Variabilidad del Tiempo de Resolución por Borough")
-                st.caption("Distribución completa (mediana, percentiles y outliers) por zona.")
-                df_box = df_res[df_res['dias_resolucion'] <= 90].dropna(subset=[borough_col])
-                fig_box = go.Figure()
-                borough_order = df_box.groupby(borough_col)['dias_resolucion'].median()\
-                                      .sort_values(ascending=False).index.tolist()
-                for boro in borough_order:
-                    vals = df_box[df_box[borough_col] == boro]['dias_resolucion']
-                    fig_box.add_trace(go.Box(
-                        y=vals, name=boro,
-                        marker_color=COLOR_FOCO if vals.median() == df_box.groupby(borough_col)['dias_resolucion'].median().max() else COLOR_NEUTRO,
-                        line_color="#A0AEC0",
-                        fillcolor="rgba(74,85,104,0.3)",
-                        boxmean=True
-                    ))
-                fig_box.update_layout(
-                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                    xaxis=dict(**EJE_X_BASE, title=dict(text="Borough", font=dict(color="#A0AEC0", size=11))),
-                    yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                               title=dict(text="Días hasta Resolución", font=dict(color="#A0AEC0", size=11))),
-                    showlegend=False, height=420
-                )
-                st.plotly_chart(fig_box, use_container_width=True)
-                st.caption("Vista limitada a 90 días. La 'X' dentro de la caja indica el promedio.")
