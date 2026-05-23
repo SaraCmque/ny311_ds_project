@@ -251,3 +251,124 @@ def render_dynamic_charts(df: pd.DataFrame):
         fig.update_layout(margin=dict(t=10, b=10, l=10, r=10))
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Nota: Muestra aleatoria de 5,000 registros para optimización de memoria.")
+
+    st.divider()
+
+    # ======================================================================
+    # MAPA: DENSIDAD POR CITY COUNCIL DISTRICTS + PUNTOS DE FRECUENCIA
+    # ======================================================================
+    council_col = next(
+        (col for col in df_work.columns if 'council' in col.lower() and 'district' in col.lower()),
+        next((col for col in df_work.columns if 'city_council' in col.lower() or col.lower() == 'city council districts'), None)
+    )
+
+    if lat_col and lon_col and council_col:
+        st.subheader("🗳️ Densidad por City Council Districts")
+        st.write("Mapa de calor coroplético por distrito, superpuesto con puntos de frecuencia de incidentes.")
+
+        import requests, json
+
+        GEOJSON_URL = "https://data.cityofnewyork.us/api/geospatial/yusd-j4xi?method=export&type=GeoJSON"
+
+        @st.cache_data(ttl=3600, show_spinner="Cargando geometrías de distritos...")
+        def fetch_council_geojson():
+            try:
+                r = requests.get(GEOJSON_URL, timeout=15)
+                r.raise_for_status()
+                return r.json()
+            except Exception:
+                return None
+
+        geojson_data = fetch_council_geojson()
+
+        # Calcular frecuencia por distrito
+        df_council_valid = df_work.dropna(subset=[council_col, lat_col, lon_col])
+        df_council_valid[council_col] = pd.to_numeric(df_council_valid[council_col], errors='coerce')
+        df_council_valid = df_council_valid.dropna(subset=[council_col])
+        df_council_valid[council_col] = df_council_valid[council_col].astype(int).astype(str)
+
+        df_freq = df_council_valid[council_col].value_counts().reset_index()
+        df_freq.columns = ['district', 'frecuencia']
+
+        fig_council = go.Figure()
+
+        if geojson_data:
+            # Coroplético base: intensidad = frecuencia de incidentes
+            fig_council.add_trace(go.Choroplethmapbox(
+                geojson=geojson_data,
+                locations=df_freq['district'],
+                z=df_freq['frecuencia'],
+                featureidkey="properties.CounDist",
+                colorscale=[
+                    [0.0, "rgba(45, 55, 72, 0.6)"],
+                    [0.4, "rgba(120, 60, 60, 0.7)"],
+                    [0.7, "rgba(180, 40, 40, 0.85)"],
+                    [1.0, "#D9383A"]
+                ],
+                marker_opacity=0.75,
+                marker_line_width=0.8,
+                marker_line_color="rgba(255,255,255,0.15)",
+                colorbar=dict(
+                    title=dict(text="Incidentes", font=dict(color="#A0AEC0", size=11)),
+                    tickfont=dict(color="#A0AEC0"),
+                    bgcolor="rgba(0,0,0,0)",
+                    borderwidth=0,
+                    thickness=12
+                ),
+                hovertemplate="<b>Distrito %{location}</b><br>Incidentes: %{z:,}<extra></extra>",
+                name="Densidad"
+            ))
+        else:
+            st.caption("⚠️ GeoJSON de distritos no disponible. Mostrando sólo puntos de frecuencia.")
+
+        # Puntos de frecuencia superpuestos (muestra aleatoria)
+        df_scatter = df_council_valid.sample(n=min(5000, len(df_council_valid)))
+        colores_scatter = [
+            COLOR_FOCO if int(d) in df_freq.nlargest(3, 'frecuencia')['district'].astype(int).tolist()
+            else "rgba(160, 174, 192, 0.4)"
+            for d in df_scatter[council_col]
+        ]
+
+        fig_council.add_trace(go.Scattermapbox(
+            lat=df_scatter[lat_col],
+            lon=df_scatter[lon_col],
+            mode='markers',
+            marker=dict(
+                size=4,
+                color=colores_scatter,
+                opacity=0.55
+            ),
+            hovertemplate=(
+                f"<b>Distrito %{{customdata}}</b><br>"
+                + (f"Queja: %{{text}}<br>" if complaint_col else "")
+                + "<extra></extra>"
+            ),
+            text=df_scatter[complaint_col].astype(str) if complaint_col else None,
+            customdata=df_scatter[council_col],
+            name="Incidentes"
+        ))
+
+        fig_council.update_layout(
+            mapbox=dict(
+                style="carto-darkmatter",
+                center=dict(lat=40.7128, lon=-74.0060),
+                zoom=10
+            ),
+            margin=dict(t=10, b=10, l=10, r=10),
+            height=620,
+            showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)"
+        )
+
+        st.plotly_chart(fig_council, use_container_width=True)
+
+        # Top 5 distritos más críticos
+        top5 = df_freq.sort_values('frecuencia', ascending=False).head(5).reset_index(drop=True)
+        top5.index += 1
+        top5.columns = ['District', 'Incidentes']
+        st.markdown("**Top 5 Distritos con Mayor Carga de Incidentes**")
+        st.dataframe(top5, use_container_width=True)
+        st.caption("Nota: Puntos en rojo = top 3 distritos por volumen. Muestra aleatoria de 5,000 puntos para optimización de memoria.")
+
+    elif not council_col:
+        st.info("No se encontró la columna 'City Council Districts' en el dataset.")
