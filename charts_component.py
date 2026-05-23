@@ -351,9 +351,19 @@ def render_dynamic_charts(df: pd.DataFrame):
             "QUEENS": 4,    "QN": 4, "QS": 4,
             "STATEN ISLAND": 5, "SI": 5,
         }
-        # Paleta de colores por borough (igual que el mapa de referencia)
-        BORO_PALETTE = {1: "#E8A838", 2: "#6BAF92", 3: "#8B9DC3", 4: "#C4A882", 5: "#9B7BB5"}
-        BORO_NAMES   = {1: "Manhattan", 2: "Bronx", 3: "Brooklyn", 4: "Queens", 5: "Staten Island"}
+        # Paleta de colores por borough — cada uno con escala propia de baja a alta intensidad
+        BORO_NAMES = {1: "Manhattan", 2: "Bronx", 3: "Brooklyn", 4: "Queens", 5: "Staten Island"}
+
+        # Escala por borough: [0=vacío, 0.2=pálido, 1.0=color vivo máximo]
+        BORO_SCALES = {
+            1: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#FFF59D"], [0.55, "#FFCA28"], [1.0, "#FF6F00"]],   # Manhattan: amarillo → naranja intenso
+            2: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#B9F6CA"], [0.55, "#00E676"], [1.0, "#00695C"]],   # Bronx: verde menta → verde profundo
+            3: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#BBDEFB"], [0.55, "#1E88E5"], [1.0, "#0D47A1"]],   # Brooklyn: celeste → azul marino
+            4: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#F8BBD9"], [0.55, "#E91E63"], [1.0, "#880E4F"]],   # Queens: rosa → fucsia profundo
+            5: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#E1BEE7"], [0.55, "#AB47BC"], [1.0, "#4A148C"]],   # Staten Island: lila → morado oscuro
+        }
+        # Color representativo de cada borough (tono medio) para puntos y leyenda
+        BORO_COLOR = {1: "#FFCA28", 2: "#00E676", 3: "#1E88E5", 4: "#E91E63", 5: "#AB47BC"}
 
         def parse_borocd(val):
             """Convierte '01 BROOKLYN' → 301, '12 QUEENS' → 412, etc."""
@@ -429,29 +439,22 @@ def render_dynamic_charts(df: pd.DataFrame):
                 if df_b.empty:
                     continue
 
-                base_color = BORO_PALETTE[boro_code]
-
-                # Escala de color: blanco (baja carga) → color del borough (alta carga)
-                colorscale_b = [
-                    [0.0, "rgba(20,25,35,0.3)"],
-                    [1.0, base_color]
-                ]
-
+                boro_max = df_b['incidentes'].max() if not df_b.empty else 1
                 fig_cd.add_trace(go.Choroplethmapbox(
                     geojson=geojson_cd,
                     locations=df_b['borocd'],
                     z=df_b['incidentes'],
                     featureidkey="properties.BoroCD",
-                    colorscale=colorscale_b,
+                    colorscale=BORO_SCALES[boro_code],
                     zmin=0,
-                    zmax=max_inc,
+                    zmax=boro_max,          # escala independiente por borough
                     showscale=False,
-                    marker_opacity=0.80,
-                    marker_line_width=1.0,
-                    marker_line_color="rgba(255,255,255,0.35)",
+                    marker_opacity=0.88,
+                    marker_line_width=1.4,
+                    marker_line_color="rgba(255,255,255,0.45)",
                     hovertemplate=(
                         f"<b>{boro_name}</b> — Distrito %{{location}}<br>"
-                        "Incidentes: %{z:,}<extra></extra>"
+                        "Incidentes: <b>%{z:,}</b><extra></extra>"
                     ),
                     name=boro_name
                 ))
@@ -459,7 +462,7 @@ def render_dynamic_charts(df: pd.DataFrame):
             # Puntos superpuestos (muestra) coloreados por borough
             if lat_col and lon_col:
                 df_pts = df_cd.dropna(subset=[lat_col, lon_col]).sample(n=min(5000, len(df_cd)))
-                colores_pts = [BORO_PALETTE.get(int(b), "#718096") for b in df_pts['boro_code']]
+                colores_pts = [BORO_COLOR.get(int(b) // 100, "#718096") for b in df_pts['borocd']]
 
                 fig_cd.add_trace(go.Scattermapbox(
                     lat=df_pts[lat_col],
@@ -514,22 +517,22 @@ def render_dynamic_charts(df: pd.DataFrame):
                 st.markdown("**Ranking por Borough**")
                 st.dataframe(df_summary, use_container_width=True)
             with col_leg:
-                leyenda_html = "".join([
-                    f'<span style="display:inline-block;width:12px;height:12px;'
-                    f'background:{BORO_PALETTE[k]};border-radius:2px;margin-right:6px;"></span>'
-                    f'<span style="color:#E2E8F0;font-size:13px;">{v}</span>&nbsp;&nbsp;&nbsp;'
+                leyenda_items = "".join([
+                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+                    f'<div style="width:48px;height:14px;border-radius:3px;'
+                    f'background:linear-gradient(to right,{BORO_SCALES[k][1][1]},{BORO_SCALES[k][-1][1]});"></div>'
+                    f'<span style="color:#E2E8F0;font-size:13px;"><b>{v}</b> — pálido (poco) → intenso (mucho)</span></div>'
                     for k, v in BORO_NAMES.items()
                 ])
                 st.markdown(
                     f"""
                     <div style="padding:14px; border-left:4px solid #4A5568;
                                 background:rgba(74,85,104,0.08); border-radius:4px; margin-top:6px;">
-                        <div style="margin-bottom:10px;">{leyenda_html}</div>
-                        <span style="color:#A0AEC0; font-size:13px;">
-                            • El <b style="color:white;">tono más intenso</b> dentro de cada borough indica mayor carga de incidentes.<br>
-                            • Los <b style="color:white;">puntos</b> representan incidentes individuales, coloreados por borough.<br>
-                            • Hover sobre cada distrito para ver el conteo exacto.
-                        </span>
+                        <span style="color:#E2E8F0; font-size:12px; font-weight:700; letter-spacing:1px;">LEYENDA DE COLORES</span><br><br>
+                        {leyenda_items}
+                        <div style="margin-top:8px; color:#A0AEC0; font-size:12px;">
+                            Dentro de cada borough: <b style="color:white;">tono pálido</b> = pocos incidentes · <b style="color:white;">tono saturado</b> = muchos incidentes
+                        </div>
                     </div>
                     """,
                     unsafe_allow_html=True
