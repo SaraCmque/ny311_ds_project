@@ -55,14 +55,16 @@ def render_dynamic_charts(df: pd.DataFrame):
         if complaint_col:
             top_complaints = df_work[complaint_col].value_counts().head(10).reset_index()
             top_complaints.columns = ['Tipo', 'Cantidad']
-            
-            idx_max = top_complaints['Cantidad'].idxmax()
+            # Ordenar ascendente para que el orden del array de colores coincida con el visual
+            top_complaints = top_complaints.sort_values('Cantidad', ascending=True).reset_index(drop=True)
+
+            idx_max = top_complaints['Cantidad'].idxmax()  # último elemento = mayor
             colores_quejas = [COLOR_NEUTRO] * len(top_complaints)
-            colores_quejas[idx_max] = COLOR_FOCO  # Resalta la categoría predominante
-            
+            colores_quejas[idx_max] = COLOR_FOCO  # Resalta la categoría predominante (top)
+
             fig = px.bar(top_complaints, x='Cantidad', y='Tipo', orientation='h')
             fig.update_traces(marker_color=colores_quejas, marker_line_color=colores_quejas, opacity=0.85)
-            
+
             fig.add_annotation(
                 x=top_complaints.loc[idx_max, 'Cantidad'],
                 y=top_complaints.loc[idx_max, 'Tipo'],
@@ -217,8 +219,9 @@ def render_dynamic_charts(df: pd.DataFrame):
         row_weekday, row_monthday = st.columns(2)
 
         with row_weekday:
+            colores_weekday = [COLOR_FOCO if d == "Sábado" else COLOR_NEUTRO for d in weekday_dist["weekday"]]
             fig_weekday = px.bar(weekday_dist, x="Total", y="weekday", orientation="h")
-            fig_weekday.update_traces(marker_color=COLOR_NEUTRO, opacity=0.85)
+            fig_weekday.update_traces(marker_color=colores_weekday, opacity=0.85)
             fig_weekday.update_layout(
                 showlegend=False,
                 plot_bgcolor=COLOR_FONDO_LIGERO,
@@ -905,39 +908,3 @@ def render_dynamic_charts(df: pd.DataFrame):
                 st.dataframe(df_tabla, use_container_width=True, height=400)
 
             st.divider()
-
-            # ── Gráfica 5: Análisis por descripción de resolución ──────────
-            if resolution_desc_col:
-                st.subheader("📋 Descripción de Resolución vs Tiempo Promedio")
-                st.caption("Qué acciones de resolución toman más tiempo en promedio.")
-                df_desc_avg = (
-                    df_res.groupby(resolution_desc_col)['dias_resolucion']
-                    .agg(['mean', 'count'])
-                    .reset_index()
-                    .rename(columns={'mean': 'promedio', 'count': 'casos'})
-                )
-                df_desc_avg = df_desc_avg[df_desc_avg['casos'] >= 20]\
-                    .nlargest(12, 'promedio')\
-                    .sort_values('promedio', ascending=True)
-
-                # Truncar textos largos
-                df_desc_avg['desc_short'] = df_desc_avg[resolution_desc_col].str[:55] + "…"
-
-                colores_desc = [COLOR_NEUTRO] * len(df_desc_avg)
-                colores_desc[-1] = COLOR_FOCO
-
-                fig_desc = px.bar(df_desc_avg, x='promedio', y='desc_short', orientation='h')
-                fig_desc.update_traces(
-                    marker_color=colores_desc, opacity=0.88,
-                    customdata=df_desc_avg[[resolution_desc_col, 'casos']],
-                    hovertemplate="<b>%{customdata[0]}</b><br>Promedio: %{x:.1f}d<br>Casos: %{customdata[1]:,}<extra></extra>"
-                )
-                fig_desc.update_layout(
-                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                    xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                               title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
-                    yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
-                    showlegend=False,
-                    height=max(350, len(df_desc_avg) * 32)
-                )
-                st.plotly_chart(fig_desc, use_container_width=True)
