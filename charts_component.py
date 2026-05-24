@@ -30,24 +30,24 @@ def render_dynamic_charts(df: pd.DataFrame):
     col_a, col_b = st.columns(2)
 
     # PALETA DE COLORES SELECTIVA (Gris para control, Rojo para llamar la atención)
-    COLOR_FOCO = "#D9383A"       # Rojo estratégico
-    COLOR_NEUTRO = "#4A5568"     # Gris oscuro sutil para barras secundarias
-    COLOR_FONDO_LIGERO = "rgba(0,0,0,0)"
+    COLOR_FOCO = "#C0292B"       # Rojo estratégico (ligeramente más oscuro para fondo blanco)
+    COLOR_NEUTRO = "#718096"     # Gris medio visible sobre fondo blanco
+    COLOR_FONDO_LIGERO = "white"
     
     # Configuración base reutilizable para dar contexto y enmarcar los ejes
     EJE_X_BASE = dict(
         showline=True,
         linewidth=1.2,
-        linecolor="rgba(160, 174, 192, 0.4)",
+        linecolor="rgba(74, 85, 104, 0.5)",
         ticks="outside",
-        tickfont=dict(color="#A0AEC0", size=10)
+        tickfont=dict(color="#2D3748", size=10)
     )
     EJE_Y_BASE = dict(
         showline=True,
         linewidth=1.2,
-        linecolor="rgba(160, 174, 192, 0.4)",
+        linecolor="rgba(74, 85, 104, 0.5)",
         ticks="outside",
-        tickfont=dict(color="#A0AEC0", size=10)
+        tickfont=dict(color="#2D3748", size=10)
     )
 
     with col_a:
@@ -86,22 +86,22 @@ def render_dynamic_charts(df: pd.DataFrame):
             fig.update_xaxes(
                 showline=True,
                 linewidth=1.2,
-                linecolor="rgba(160, 174, 192, 0.4)",
+                linecolor="rgba(74, 85, 104, 0.5)",
                 ticks="outside",
                 showgrid=False,
                 title_text="Número de Reportes",
-                title_font=dict(color="#000000", size=12, family="Arial"),
-                tickfont=dict(color="#000000", size=11)
+                title_font=dict(color="#2D3748", size=12, family="Arial"),
+                tickfont=dict(color="#2D3748", size=11)
             )
             fig.update_yaxes(
                 showline=True,
                 linewidth=1.2,
-                linecolor="rgba(160, 174, 192, 0.4)",
+                linecolor="rgba(74, 85, 104, 0.5)",
                 ticks="outside",
                 categoryorder='total ascending',
                 title_text="Tipo de Incidente",
-                title_font=dict(color="#000000", size=12, family="Arial"),
-                tickfont=dict(color="#000000", size=11)
+                title_font=dict(color="#2D3748", size=12, family="Arial"),
+                tickfont=dict(color="#2D3748", size=11)
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -127,11 +127,11 @@ def render_dynamic_charts(df: pd.DataFrame):
                 xaxis=dict(
                     **EJE_X_BASE,
                     showgrid=False,
-                    title=dict(text="Total de Reportes", font=dict(color="#A0AEC0", size=11))
+                    title=dict(text="Total de Reportes", font=dict(color="#2D3748", size=11))
                 ),
                 yaxis=dict(
                     **EJE_Y_BASE,
-                    title=dict(text="Distrito (Borough)", font=dict(color="#A0AEC0", size=11))
+                    title=dict(text="Distrito (Borough)", font=dict(color="#2D3748", size=11))
                 )
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -159,7 +159,7 @@ def render_dynamic_charts(df: pd.DataFrame):
             marker=dict(color=COLOR_FOCO, size=12, line=dict(width=2, color='white')),
             text=[f"Pico Máximo: {row_max['Total']}"],
             textposition="top center",
-            textfont=dict(color="white", size=12),
+            textfont=dict(color="#1A202C", size=12),
             name="Máximo Histórico"
         ))
         
@@ -168,10 +168,10 @@ def render_dynamic_charts(df: pd.DataFrame):
             x=[row_min['Fecha']], 
             y=[row_min['Total']],
             mode='markers+text',
-            marker=dict(color="#63B3ED", size=10, line=dict(width=2, color='white')),
+            marker=dict(color="#3182CE", size=10, line=dict(width=2, color='white')),
             text=[f"Mínimo: {row_min['Total']}"],
             textposition="bottom center",
-            textfont=dict(color="#A0AEC0", size=11),
+            textfont=dict(color="#4A5568", size=11),
             name="Mínimo Histórico"
         ))
         
@@ -182,13 +182,13 @@ def render_dynamic_charts(df: pd.DataFrame):
             xaxis=dict(
                 **EJE_X_BASE,
                 showgrid=False,
-                title=dict(text="Línea de Tiempo", font=dict(color="#A0AEC0", size=11))
+                title=dict(text="Línea de Tiempo", font=dict(color="#2D3748", size=11))
             ),
             yaxis=dict(
                 **EJE_Y_BASE,
                 showgrid=True,
-                gridcolor="rgba(200,200,200,0.08)",
-                title=dict(text="Frecuencia Diaria de Casos", font=dict(color="#A0AEC0", size=11))
+                gridcolor="rgba(0,0,0,0.08)",
+                title=dict(text="Frecuencia Diaria de Casos", font=dict(color="#2D3748", size=11))
             )
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -237,11 +237,11 @@ def render_dynamic_charts(df: pd.DataFrame):
                 xaxis={
                     **EJE_X_BASE,
                     "showgrid": False,
-                    "title": {"text": "Total de Reportes", "font": {"color": "#A0AEC0", "size": 11}}
+                    "title": {"text": "Total de Reportes", "font": {"color": "#2D3748", "size": 11}}
                 },
                 yaxis={
                     **EJE_Y_BASE,
-                    "title": {"text": "Día de la Semana", "font": {"color": "#A0AEC0", "size": 11}}
+                    "title": {"text": "Día de la Semana", "font": {"color": "#2D3748", "size": 11}}
                 }
             )
             st.plotly_chart(fig_weekday, use_container_width=True)
@@ -255,11 +255,11 @@ def render_dynamic_charts(df: pd.DataFrame):
                 paper_bgcolor=COLOR_FONDO_LIGERO,
                 xaxis={
                     **EJE_X_BASE,
-                    "title": {"text": "Día del Mes", "font": {"color": "#A0AEC0", "size": 11}}
+                    "title": {"text": "Día del Mes", "font": {"color": "#2D3748", "size": 11}}
                 },
                 yaxis={
                     **EJE_Y_BASE,
-                    "title": {"text": "Total de Reportes", "font": {"color": "#A0AEC0", "size": 11}}
+                    "title": {"text": "Total de Reportes", "font": {"color": "#2D3748", "size": 11}}
                 }
             )
             st.plotly_chart(fig_day, use_container_width=True)
@@ -296,13 +296,14 @@ def render_dynamic_charts(df: pd.DataFrame):
                 xaxis=dict(
                     **EJE_X_BASE,
                     showgrid=True,
-                    gridcolor="rgba(100,100,100,0.1)",
-                    title=dict(text="Días Promedio de Cierre", font=dict(color="#A0AEC0", size=11))
+                    gridcolor="rgba(0,0,0,0.1)",
+                    title=dict(text="Días Promedio de Cierre", font=dict(color="#2D3748", size=11))
                 ),
                 yaxis=dict(
                     **EJE_Y_BASE,
-                    title=dict(text="Categoría de Incidente", font=dict(color="#A0AEC0", size=11))
+                    title=dict(text="Categoría de Incidente", font=dict(color="#2D3748", size=11))
                 ),
+
                 xaxis_range=[0, peor_dia * 1.3],
                 annotations=[
                     dict(
@@ -339,7 +340,7 @@ def render_dynamic_charts(df: pd.DataFrame):
         
         fig = px.scatter_mapbox(df_map, lat=lat_col, lon=lon_col,
                                 hover_name=complaint_col if complaint_col else None,
-                                zoom=10, height=600, mapbox_style="carto-darkmatter")
+                                zoom=10, height=600, mapbox_style="carto-positron")
         
         if borough_col:
             colores_mapa = [COLOR_FOCO if b == "BROOKLYN" else "#718096" for b in df_map[borough_col]]
@@ -450,7 +451,7 @@ def render_dynamic_charts(df: pd.DataFrame):
                 lat=lat_col, lon=lon_col,
                 color='boro_code',
                 color_continuous_scale=list(BORO_PALETTE.values()),
-                zoom=10, height=640, mapbox_style="carto-darkmatter"
+                zoom=10, height=640, mapbox_style="carto-positron"
             )
             fig_cd_fall.update_layout(margin=dict(t=10,b=10,l=10,r=10), paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_cd_fall, use_container_width=True)
@@ -466,20 +467,18 @@ def render_dynamic_charts(df: pd.DataFrame):
             with col_desc:
                 if solo_criticos:
                     st.markdown(
-                        "<div style='padding:8px 12px;background:rgba(217,56,58,0.12);"
-                        "border-left:3px solid #FF0055;border-radius:4px;margin-top:4px;'>"
-                        "<span style='color:#FF0055;font-size:12px;font-weight:700;'>MODO CRÍTICO ACTIVO</span>"
-                        "<span style='color:#A0AEC0;font-size:12px;'> · Solo se muestran los distritos en el top 30% de incidentes por borough.</span>"
+                        "<div style='padding:8px 12px;background:rgba(217,56,58,0.08);"
+                        "border-left:3px solid #C0292B;border-radius:4px;margin-top:4px;'>"
+                        "<span style='color:#C0292B;font-size:12px;font-weight:700;'>MODO CRÍTICO ACTIVO</span>"
+                        "<span style='color:#4A5568;font-size:12px;'> · Solo se muestran los distritos en el top 30% de incidentes por borough.</span>"
                         "</div>",
                         unsafe_allow_html=True
                     )
                 else:
                     st.markdown(
-                        "<div style='padding:8px 12px;background:rgba(74,85,104,0.12);"
-                        "border-left:3px solid #4A5568;border-radius:4px;margin-top:4px;'>"
-                        "<span style='color:#A0AEC0;font-size:12px;'>Todos los distritos visibles · "
-                        "Activa el botón para resaltar solo las zonas más críticas.</span>"
-                        "</div>",
+                        "<div style='padding:8px 12px;background:rgba(0,0,0,0.04);"
+                        "border-left:3px solid #718096;border-radius:4px;margin-top:4px;'>"
+                        "<span style='color:#4A5568;font-size:12px;'>Todos los distritos visibles · "
                         unsafe_allow_html=True
                     )
 
@@ -551,7 +550,7 @@ def render_dynamic_charts(df: pd.DataFrame):
 
             fig_cd.update_layout(
                 mapbox=dict(
-                    style="carto-darkmatter",
+                    style="carto-positron",
                     center=dict(lat=40.7128, lon=-74.0060),
                     zoom=10
                 ),
@@ -562,11 +561,11 @@ def render_dynamic_charts(df: pd.DataFrame):
                     orientation="h",
                     yanchor="bottom", y=0.01,
                     xanchor="left", x=0.01,
-                    bgcolor="rgba(15,20,30,0.75)",
-                    font=dict(color="#E2E8F0", size=11),
+                    bgcolor="rgba(255,255,255,0.88)",
+                    font=dict(color="#2D3748", size=11),
                     itemclick=False
                 ),
-                paper_bgcolor="rgba(0,0,0,0)"
+                paper_bgcolor="white"
             )
             st.plotly_chart(fig_cd, use_container_width=True)
 
@@ -575,14 +574,14 @@ def render_dynamic_charts(df: pd.DataFrame):
                 f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
                 f'<div style="width:48px;height:14px;border-radius:3px;'
                 f'background:linear-gradient(to right,{BORO_SCALES[k][1][1]},{BORO_SCALES[k][-1][1]});"></div>'
-                f'<span style="color:#E2E8F0;font-size:13px;"><b>{v}</b> — pálido = poco · saturado = mucho</span></div>'
+                f'<span style="color:#2D3748;font-size:13px;"><b>{v}</b> — pálido = poco · saturado = mucho</span></div>'
                 for k, v in BORO_NAMES.items()
             ])
             st.markdown(
                 f"""
                 <div style="padding:12px 16px; border-left:4px solid #4A5568;
-                            background:rgba(74,85,104,0.08); border-radius:4px; margin-bottom:18px;">
-                    <span style="color:#E2E8F0; font-size:12px; font-weight:700; letter-spacing:1px;">LEYENDA DE COLORES</span><br><br>
+                            background:rgba(0,0,0,0.04); border-radius:4px; margin-bottom:18px;">
+                    <span style="color:#2D3748; font-size:12px; font-weight:700; letter-spacing:1px;">LEYENDA DE COLORES</span><br><br>
                     {leyenda_items}
                 </div>
                 """,
@@ -610,18 +609,18 @@ def render_dynamic_charts(df: pd.DataFrame):
                 st.markdown(
                     f"""
                     <div style="
-                        background-color: rgba(217, 56, 58, 0.08);
-                        border-left: 5px solid #FF0055;
+                        background-color: rgba(192, 41, 43, 0.06);
+                        border-left: 5px solid #C0292B;
                         padding: 20px;
                         border-radius: 6px;
                         margin-bottom: 22px;
-                        border-top: 1px solid rgba(217, 56, 58, 0.2);
-                        border-right: 1px solid rgba(217, 56, 58, 0.2);
-                        border-bottom: 1px solid rgba(217, 56, 58, 0.2);
+                        border-top: 1px solid rgba(192, 41, 43, 0.15);
+                        border-right: 1px solid rgba(192, 41, 43, 0.15);
+                        border-bottom: 1px solid rgba(192, 41, 43, 0.15);
                     ">
-                        <span style="color:#FF0055; font-size:13px; font-weight:bold; letter-spacing:1px;">🚨 FOCO CRÍTICO OPERATIVO</span>
-                        <h2 style="margin: 5px 0 0 0; font-size: 30px; font-weight: 800; color: #FF0055;">{complaint_moda}</h2>
-                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #718096;">
+                        <span style="color:#C0292B; font-size:13px; font-weight:bold; letter-spacing:1px;">🚨 FOCO CRÍTICO OPERATIVO</span>
+                        <h2 style="margin: 5px 0 0 0; font-size: 30px; font-weight: 800; color: #C0292B;">{complaint_moda}</h2>
+                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #4A5568;">
                             Esta es la categoría con mayor recurrencia en toda la ciudad.
                             Específicamente bajo la modalidad de: <b>{descriptor_moda}</b>.
                         </p>
@@ -683,11 +682,11 @@ def render_dynamic_charts(df: pd.DataFrame):
                     accent = BORO_ACCENT.get(boro_code, "#fff")
                     st.markdown(
                         f"""<div style="padding:10px 14px;border-left:4px solid {accent};
-                            background:rgba(0,0,0,0.15);border-radius:4px;margin-bottom:12px;">
+                            background:rgba(0,0,0,0.04);border-radius:4px;margin-bottom:12px;">
                             <span style="color:{accent};font-size:12px;font-weight:700;">DISTRITO MÁS CRÍTICO</span><br>
-                            <span style="font-size:22px;font-weight:800;color:white;">Distrito {top_district['Distrito']}</span>
-                            <span style="color:#A0AEC0;font-size:13px;margin-left:10px;">{int(top_district['Total Incidentes']):,} incidentes</span><br>
-                            <span style="color:#A0AEC0;font-size:13px;">Queja dominante: <b style="color:white;">{top_district['Queja Más Frecuente']}</b></span>
+                            <span style="font-size:22px;font-weight:800;color:#1A202C;">Distrito {top_district['Distrito']}</span>
+                            <span style="color:#4A5568;font-size:13px;margin-left:10px;">{int(top_district['Total Incidentes']):,} incidentes</span><br>
+                            <span style="color:#4A5568;font-size:13px;">Queja dominante: <b style="color:#1A202C;">{top_district['Queja Más Frecuente']}</b></span>
                         </div>""",
                         unsafe_allow_html=True
                     )
@@ -758,9 +757,9 @@ def render_dynamic_charts(df: pd.DataFrame):
             fig_hist.update_layout(
                 plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
                 xaxis=dict(**EJE_X_BASE, showgrid=False,
-                           title=dict(text="Días hasta Resolución", font=dict(color="#A0AEC0", size=11))),
-                yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                           title=dict(text="Cantidad de Incidentes", font=dict(color="#A0AEC0", size=11))),
+                           title=dict(text="Días hasta Resolución", font=dict(color="#2D3748", size=11))),
+                yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(0,0,0,0.08)",
+                           title=dict(text="Cantidad de Incidentes", font=dict(color="#2D3748", size=11))),
                 showlegend=False, height=350
             )
             st.plotly_chart(fig_hist, use_container_width=True)
@@ -836,18 +835,18 @@ def render_dynamic_charts(df: pd.DataFrame):
                 fig_vol.update_layout(
                     plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
                     xaxis=dict(**EJE_X_BASE, showgrid=False,
-                               title=dict(text="Total Incidentes Reportados", font=dict(color="#A0AEC0", size=11))),
-                    yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#A0AEC0", size=11))),
+                               title=dict(text="Total Incidentes Reportados", font=dict(color="#2D3748", size=11))),
+                    yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#2D3748", size=11))),
                     showlegend=False,
                     height=max(420, len(df_top20) * 26)
                 )
                 st.plotly_chart(fig_vol, use_container_width=True)
                 st.markdown(
                     "<div style='display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;'>"
-                    "<span style='color:#00C853;font-size:12px;'>🟢 Verde = resolución rápida</span>"
-                    "<span style='color:#FFD600;font-size:12px;'>🟡 Amarillo = tiempo medio</span>"
-                    "<span style='color:#FF9800;font-size:12px;'>🟠 Naranja = resolución lenta</span>"
-                    f"<span style='color:{COLOR_FOCO};font-size:12px;'>🔴 Rojo = resolución muy lenta</span>"
+                    "<span style='color:#00A040;font-size:12px;font-weight:600;'>🟢 Verde = resolución rápida</span>"
+                    "<span style='color:#B8860B;font-size:12px;font-weight:600;'>🟡 Amarillo = tiempo medio</span>"
+                    "<span style='color:#CC6600;font-size:12px;font-weight:600;'>🟠 Naranja = resolución lenta</span>"
+                    f"<span style='color:{COLOR_FOCO};font-size:12px;font-weight:600;'>🔴 Rojo = resolución muy lenta</span>"
                     "</div>",
                     unsafe_allow_html=True
                 )
@@ -863,7 +862,7 @@ def render_dynamic_charts(df: pd.DataFrame):
                 col_worst, col_best = st.columns(2)
 
                 with col_worst:
-                    st.markdown(f"<span style='color:{COLOR_FOCO};font-weight:700;'>🚨 Más lentas</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color:{COLOR_FOCO};font-weight:700;font-size:15px;'>🚨 Más lentas</span>", unsafe_allow_html=True)
                     df_w = df_top20_sorted_dias.nlargest(10, 'promedio').sort_values('promedio', ascending=True)
                     colores_w = [COLOR_NEUTRO] * len(df_w)
                     colores_w[-1] = COLOR_FOCO
@@ -875,14 +874,14 @@ def render_dynamic_charts(df: pd.DataFrame):
                     ))
                     fig_w.update_layout(
                         plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                                   title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
+                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(0,0,0,0.08)",
+                                   title=dict(text="Días Promedio", font=dict(color="#2D3748", size=11))),
                         yaxis=dict(**EJE_Y_BASE), showlegend=False, height=380
                     )
                     st.plotly_chart(fig_w, use_container_width=True)
 
                 with col_best:
-                    st.markdown("<span style='color:#00C853;font-weight:700;'>✅ Más rápidas</span>", unsafe_allow_html=True)
+                    st.markdown("<span style='color:#00803A;font-weight:700;font-size:15px;'>✅ Más rápidas</span>", unsafe_allow_html=True)
                     df_b2 = df_top20_sorted_dias.nsmallest(10, 'promedio').sort_values('promedio', ascending=False)
                     colores_b2 = ["#00C853"] * len(df_b2)
                     colores_b2[0] = "#69F0AE"
@@ -894,8 +893,8 @@ def render_dynamic_charts(df: pd.DataFrame):
                     ))
                     fig_b2.update_layout(
                         plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(200,200,200,0.06)",
-                                   title=dict(text="Días Promedio", font=dict(color="#A0AEC0", size=11))),
+                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(0,0,0,0.08)",
+                                   title=dict(text="Días Promedio", font=dict(color="#2D3748", size=11))),
                         yaxis=dict(**EJE_Y_BASE), showlegend=False, height=380
                     )
                     st.plotly_chart(fig_b2, use_container_width=True)
