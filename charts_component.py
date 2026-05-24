@@ -83,12 +83,14 @@ def render_dynamic_charts(df: pd.DataFrame):
                 xaxis=dict(
                     **EJE_X_BASE,
                     showgrid=False,
-                    title=dict(text="Número de Reportes", font=dict(color="#A0AEC0", size=11))
+                    title=dict(text="Número de Reportes", font=dict(color="#000000", size=12, family="Arial", bold=True)),
+                    tickfont=dict(color="#000000", size=11)
                 ),
                 yaxis=dict(
                     **EJE_Y_BASE,
                     categoryorder='total ascending',
-                    title=dict(text="Tipo de Incidente", font=dict(color="#A0AEC0", size=11))
+                    title=dict(text="Tipo de Incidente", font=dict(color="#000000", size=12, family="Arial", bold=True)),
+                    tickfont=dict(color="#000000", size=11)
                 )
             )
             st.plotly_chart(fig, use_container_width=True)
