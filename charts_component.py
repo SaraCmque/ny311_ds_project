@@ -1,91 +1,100 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import boto3
-from io import BytesIO
-from s3_utils import get_s3_client, load_from_s3 # Usamos tus utilidades
+import plotly.graph_objects as go
+import numpy as np
+import requests
+# Importamos tu utilidad personalizada
+from s3_utils import load_from_s3
 
-def display_correlation_heatmap():
-    """Descarga y muestra la imagen de correlación guardada por Glue."""
-    st.subheader("🔗 Matriz de Correlación (Variables Numéricas)")
-    st.info("Este análisis identifica la relación estadística entre las coordenadas, el código postal y el incumplimiento de SLA.")
+def load_data_for_eda():
+    """Carga los datos enriquecidos desde la capa Gold usando s3_utils."""
+    # Ruta del prefijo en S3 (ajustada a tu estructura)
+    prefix_gold = "gold/enhanced_for_streamlit_eda/"
     
-    bucket = "proyecto-ny311"
-    key = "glue-notebook-plots/correlation_heatmap_eda.png"
+    # Usamos tu función que ya maneja secrets y múltiples partes de parquet
+    df = load_from_s3(prefix=prefix_gold)
     
-    try:
-        s3 = get_s3_client()
-        response = s3.get_object(Bucket=bucket, Key=key)
-        img_bytes = response['Body'].read()
-        st.image(img_bytes, caption="Correlación generada en el procesamiento Gold", use_container_width=True)
-    except Exception as e:
-        st.warning("Aún no se ha generado la imagen de correlación o no hay acceso al archivo.")
+    if df is not None:
+        # Convertir columnas de fecha
+        df['Created Date'] = pd.to_datetime(df['Created Date'], errors='coerce')
+        df['Closed Date'] = pd.to_datetime(df['Closed Date'], errors='coerce')
+        df['created_date_only'] = pd.to_datetime(df['created_date_only'], errors='coerce')
+        
+        # Asegurarse de que las columnas categóricas sean string
+        str_cols = ['Complaint Type', 'Borough', 'created_day_of_week_name', 'Incident Zip', 
+                    'Community Board', 'Agency Name', 'Open Data Channel Type']
+        for col_name in str_cols:
+            if col_name in df.columns:
+                df[col_name] = df[col_name].astype(str).replace('nan', 'N/A')
+        return df
+    else:
+        return None
 
 def render_dynamic_charts():
-    prefix_gold = "gold/enhanced_for_streamlit_eda/"
-    df_raw = load_from_s3(prefix=prefix_gold)
+    """Función principal para renderizar las gráficas de SLA."""
+    
+    df_raw = load_data_for_eda()
     
     if df_raw is None or df_raw.empty:
-        st.error("No se pudieron cargar los datos.")
+        st.error("No se pudieron cargar los datos de la capa Gold desde S3. Revisa los permisos y el prefijo.")
         return
 
-    # --- INGENIERÍA DE LA ATENCIÓN: NUEVA LÓGICA DE GRÁFICA ---
-    # Filtramos para tener datos con SLA
-    df_work = df_raw[df_raw['p75_resolution_time_days'].notna()].copy()
-
-    st.header("Análisis de Riesgo e Incumplimiento de SLA")
+    st.header("Análisis de Riesgo e Incumplimiento de SLA (NYC 311)")
     
-    # 1. MOSTRAR CORRELACIÓN (Primero o Segundo según importancia)
-    display_correlation_heatmap()
+    # --- FILTRADO PARA ANÁLISIS DE SLA ---
+    # Solo registros con tiempo de resolución y umbral calculado
+    df_work = df_raw[df_raw['resolution_time_days'].notna() & df_raw['p75_resolution_time_days'].notna()].copy()
     
-    st.divider()
+    if df_work.empty:
+        st.warning("Los datos están presentes pero no contienen cálculos de SLA (resolution_time_days).")
+        return
 
-    # 2. GRÁFICA REFORMULADA: UMBRALES DE TIEMPO POR CATEGORÍA
-    st.subheader("Lentitud por Categoría: ¿A los cuántos días se considera 'Falla'?")
-    st.markdown("""
-    Cada barra representa el **Percentil 75** de tiempo de resolución. 
-    Este es el umbral que separa una gestión normal de una **crítica**.
-    """)
+    # PALETA DE COLORES (Ingeniería de la Atención)
+    COLOR_FOCO = "#C0292B"       # Rojo foco
+    COLOR_NEUTRO = "#718096"     # Gris contexto
+    
+    # 1. KPIs
+    total_incidents = len(df_raw)
+    total_non_compliant = df_work[df_work['is_sla_non_compliant'] == 1].shape[0]
+    rate = (total_non_compliant / len(df_work)) if len(df_work) > 0 else 0
+    
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Total Reportes", f"{total_incidents:,}")
+    k2.metric("Casos fuera de SLA", f"{total_non_compliant:,}")
+    k3.metric("Tasa de Incumplimiento", f"{rate:.1%}")
 
-    # Obtenemos el valor del P75 por categoría (es único por categoría)
-    df_thresholds = df_work.groupby('Complaint Type')['p75_resolution_time_days'].first().reset_index()
-    df_thresholds = df_thresholds.sort_values('p75_resolution_time_days', ascending=True).tail(12)
-
-    COLOR_FOCO = "#C0292B"
-    COLOR_NEUTRO = "#718096"
-
-    # Calculamos la media de los umbrales para resaltar las que son "excesivamente lentas"
-    promedio_umbrales = df_thresholds['p75_resolution_time_days'].mean()
-
-    fig = px.bar(
-        df_thresholds, 
-        x='p75_resolution_time_days', 
-        y='Complaint Type', 
-        orientation='h',
-        labels={'p75_resolution_time_days': 'Días para entrar en Incumplimiento (P75)'}
-    )
-
-    # Resaltado selectivo: Rojo si el umbral de la categoría supera el promedio de la ciudad
-    colores = [COLOR_FOCO if v > promedio_umbrales else COLOR_NEUTRO for v in df_thresholds['p75_resolution_time_days']]
-    fig.update_traces(marker_color=colores, opacity=0.85)
-
-    fig.add_vline(x=promedio_umbrales, line_dash="dash", line_color="black", 
-                  annotation_text=f"Promedio Ciudad: {promedio_umbrales:.1f} días")
-
-    fig.update_layout(plot_bgcolor="white", showlegend=False)
+    # 2. GRÁFICA: TOP QUEJAS POR INCUMPLIMIENTO
+    st.subheader("Categorías Críticas (Mayor % de Incumplimiento)")
+    df_rate = df_work.groupby('Complaint Type')['is_sla_non_compliant'].mean().reset_index()
+    df_rate = df_rate.sort_values('is_sla_non_compliant', ascending=True).tail(10)
+    
+    fig = px.bar(df_rate, x='is_sla_non_compliant', y='Complaint Type', orientation='h',
+                 color_discrete_sequence=[COLOR_NEUTRO])
+    
+    # Resaltar la barra más alta en rojo
+    fig.update_traces(marker_color=[COLOR_FOCO if i == df_rate['is_sla_non_compliant'].max() else COLOR_NEUTRO 
+                                     for i in df_rate['is_sla_non_compliant']])
+    
+    fig.update_layout(xaxis_tickformat=".0%", plot_bgcolor="white")
     st.plotly_chart(fig, use_container_width=True)
 
-    # 3. MAPA DE FALLAS (Solo puntos críticos)
-    st.subheader("📍 Geografía del Incumplimiento")
-    st.write("Visualización de las coordenadas exactas de casos que ya superaron su SLA.")
-    df_fail = df_work[df_work['is_sla_non_compliant'] == 1].sample(n=min(3000, len(df_work)))
+    # 3. EVOLUCIÓN TEMPORAL
+    st.subheader("Evolución de Fallas en SLA por Fecha")
+    df_time = df_work.groupby('created_date_only')['is_sla_non_compliant'].mean().reset_index()
+    fig_line = px.line(df_time, x='created_date_only', y='is_sla_non_compliant')
+    fig_line.update_traces(line_color=COLOR_FOCO)
+    fig_line.update_layout(yaxis_tickformat=".0%", plot_bgcolor="white")
+    st.plotly_chart(fig_line, use_container_width=True)
+
+    # 4. MAPA COROPLÉTICO (Simplificado)
+    st.subheader("Mapa de Calor: Incumplimiento por Community District")
+    # Aquí iría la lógica del GeoJSON que discutimos antes, 
+    # asumiendo que ya tienes los datos procesados en df_work
+    st.info("El mapa utiliza las columnas 'latitude' y 'longitude' limpias para mostrar la densidad de casos fuera de SLA.")
     
-    fig_map = px.scatter_mapbox(
-        df_fail, lat="latitude", lon="longitude", 
-        color_discrete_sequence=[COLOR_FOCO], 
-        zoom=10, height=600,
-        hover_name="Complaint Type",
-        mapbox_style="carto-positron"
-    )
-    fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    df_map_fail = df_work[df_work['is_sla_non_compliant'] == 1].sample(n=min(5000, len(df_work)))
+    fig_map = px.scatter_mapbox(df_map_fail, lat="latitude", lon="longitude", 
+                                color_discrete_sequence=[COLOR_FOCO], zoom=9, height=500)
+    fig_map.update_layout(mapbox_style="carto-positron", margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
