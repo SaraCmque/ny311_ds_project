@@ -85,13 +85,13 @@ def render_dynamic_charts(df: pd.DataFrame):
                 xaxis=dict(
                     **EJE_X_BASE,
                     showgrid=False,
-                    title=dict(text="Número de Reportes", font=dict(color="#000000", size=12, family="Arial", bold=True)),
+                    title=dict(text="Número de Reportes", font=dict(color="#000000", size=12, family="Arial")),
                     tickfont=dict(color="#000000", size=11)
                 ),
                 yaxis=dict(
                     **EJE_Y_BASE,
                     categoryorder='total ascending',
-                    title=dict(text="Tipo de Incidente", font=dict(color="#000000", size=12, family="Arial", bold=True)),
+                    title=dict(text="Tipo de Incidente", font=dict(color="#000000", size=12, family="Arial")),
                     tickfont=dict(color="#000000", size=11)
                 )
             )
