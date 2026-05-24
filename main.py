@@ -2,7 +2,7 @@ import streamlit as st
 from s3_utils import load_from_s3
 from quality_component import render_quality_section
 from eda_component import render_eda_section
-from charts_component import render_dynamic_charts
+from charts_component import load_data_for_eda
 
 
 st.set_page_config(page_title="NYC 311 Healthcheck", layout="wide")
@@ -25,4 +25,4 @@ with tab_stats:
         st.warning("Reporte EDA no encontrado.")
 
 with tab_graficas:
-    render_dynamic_charts()
+    load_data_for_eda()
