@@ -25,8 +25,4 @@ with tab_stats:
         st.warning("Reporte EDA no encontrado.")
 
 with tab_graficas:
-    df_full = load_from_s3("silver/ny311/")
-    if df_full is not None:
-        render_dynamic_charts(df_full)
-    else:
-        st.warning("No se pudieron cargar los datos para las gráficas.")
+    render_dynamic_charts()

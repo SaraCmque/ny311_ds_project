@@ -2,410 +2,326 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np # Para cálculos numéricos
+import requests # Para el GeoJSON
+
+# --- RUTA DE LA CAPA GOLD ---
+# ¡Asegúrate de que esta ruta coincida con la que usaste en el notebook de Glue!
+PATH_GOLD_EDA = "s3://proyecto-ny311/gold/enhanced_for_streamlit_eda/"
 
 
-def render_dynamic_charts(df: pd.DataFrame):
-    """Renderiza gráficas dinámicas optimizadas para la Ingeniería de la Atención."""
+@st.cache_data(ttl=3600, show_spinner="Cargando datos enriquecidos para EDA...")
+def load_data_for_eda():
+    """Carga los datos enriquecidos desde la capa Gold."""
+    try:
+        # Streamlit puede leer Parquet directamente desde S3 si la máquina tiene credenciales AWS configuradas
+        df = pd.read_parquet(PATH_GOLD_EDA)
+        
+        # Convertir columnas de fecha que vienen como strings o con huso horario
+        df['Created Date'] = pd.to_datetime(df['Created Date'], errors='coerce')
+        df['Closed Date'] = pd.to_datetime(df['Closed Date'], errors='coerce')
+        df['created_date_only'] = pd.to_datetime(df['created_date_only'], errors='coerce')
+        
+        # Asegurarse de que las columnas categóricas sean de tipo string para Plotly
+        str_cols = ['Complaint Type', 'Borough', 'created_day_of_week_name', 'Incident Zip', 'Community Board',
+                    'City Council Districts', 'Police Precincts', 'Community Districts', 'Borough Boundaries',
+                    'Park Facility Name', 'Agency', 'Agency Name', 'Location Type', 'Descriptor']
+        for col_name in str_cols:
+            if col_name in df.columns:
+                df[col_name] = df[col_name].astype(str).replace('NAN', 'N/A').replace('NONE', 'N/A').replace('NULL', 'N/A')
+
+        return df
+    except Exception as e:
+        st.error(f"Error al cargar los datos desde Gold: {e}. Asegúrate de que el job de Glue se ejecutó correctamente y el bucket S3 es accesible.")
+        return pd.DataFrame() # Retorna un DataFrame vacío en caso de error
+
+
+def render_dynamic_charts():
+    """
+    Renderiza gráficas dinámicas optimizadas para la "Ingeniería de la Atención",
+    enfocadas en la probabilidad de incumplimiento de SLA.
+    """
     
-    st.header("Análisis Visual de Reportes (NYC 311)")
+    st.header("Análisis Exploratorio: Riesgo de Incumplimiento de SLA en NYC 311")
+    st.markdown("""
+    Este dashboard interactivo explora los patrones de los incidentes del 311 de NYC con un enfoque
+    en la **probabilidad de que una queja no sea resuelta dentro del tiempo esperado (SLA)** para su categoría.
+    Utilizamos un umbral del percentil 75 del tiempo de resolución por tipo de queja para identificar el riesgo.
+    """)
+
+    df_raw = load_data_for_eda()
     
-    if df is None or df.empty:
-        st.warning("No hay datos disponibles.")
+    if df_raw.empty:
+        st.warning("No hay datos disponibles para el EDA. Por favor, asegúrate de que el notebook de Glue haya procesado y guardado los datos en la capa Gold.")
         return
     
-    df_work = df.copy()
+    # Filtrar solo registros resueltos con SLA calculado para la mayoría de los análisis
+    # Pero para algunos gráficos (ej. Total Incidentes), usamos todo el df_raw
+    df_work = df_raw[df_raw['resolution_time_days'].notna() & df_raw['p75_resolution_time_days'].notna()].copy()
     
-    # Mapeo estricto de columnas sobre las 210k filas de la capa Silver
-    date_col = next((col for col in df_work.columns if 'created' in col.lower() and 'date' in col.lower()), None)
-    closed_col = next((col for col in df_work.columns if 'closed' in col.lower() and 'date' in col.lower()), None)
-    complaint_col = next((col for col in df_work.columns if 'complaint' in col.lower() and 'type' in col.lower()), None)
-    borough_col = next((col for col in df_work.columns if 'borough' in col.lower()), None)
-    
-    # Normalización de marcas de tiempo
-    if date_col:
-        df_work[date_col] = pd.to_datetime(df_work[date_col], errors='coerce')
-    if closed_col:
-        df_work[closed_col] = pd.to_datetime(df_work[closed_col], errors='coerce')
-    
-    col_a, col_b = st.columns(2)
+    if df_work.empty:
+        st.warning("No hay suficientes datos resueltos con umbrales de SLA para realizar los análisis. Esto podría deberse a un dataset muy pequeño o a problemas en el cálculo de SLA en la capa Gold.")
+        return
 
-    # PALETA DE COLORES SELECTIVA (Gris para control, Rojo para llamar la atención)
-    COLOR_FOCO = "#C0292B"       # Rojo estratégico (ligeramente más oscuro para fondo blanco)
-    COLOR_NEUTRO = "#718096"     # Gris medio visible sobre fondo blanco
+    # Mapeo de columnas (ya pre-calculadas en la capa Gold)
+    # Se usan los nombres de columnas de la capa Gold para evitar next((col for col...))
+    created_date_col = 'Created Date'
+    created_date_only_col = 'created_date_only'
+    created_day_of_week_name_col = 'created_day_of_week_name'
+    created_hour_col = 'created_hour'
+    complaint_col = 'Complaint Type'
+    borough_col = 'Borough'
+    is_sla_non_compliant_col = 'is_sla_non_compliant'
+    resolution_time_col = 'resolution_time_days'
+    p75_resolution_time_col = 'p75_resolution_time_days'
+    community_board_col = 'Community Board'
+    lat_col = 'latitude'
+    lon_col = 'longitude'
+    agency_col = 'Agency Name'
+    channel_col = 'Open Data Channel Type'
+
+    # PALETA DE COLORES SELECTIVA Y PRINCIPIOS DE "INGENIERÍA DE LA ATENCIÓN"
+    COLOR_FOCO = "#C0292B"       # Rojo estratégico para anomalías / riesgo alto de incumplimiento
+    COLOR_NEUTRO = "#718096"     # Gris medio para contexto histórico o categorías de bajo riesgo
+    COLOR_ALERTA = "#FFCA28"     # Amarillo/Naranja para advertencia, riesgo medio
+    COLOR_OK = "#00C853"         # Verde para cumplimiento, buen rendimiento
     COLOR_FONDO_LIGERO = "white"
     
-    # Configuración base reutilizable para dar contexto y enmarcar los ejes
-    EJE_X_BASE = dict(
+    # Configuración base reutilizable para los ejes
+    EJE_BASE_DICT = dict(
         showline=True,
         linewidth=1.2,
         linecolor="rgba(74, 85, 104, 0.5)",
         ticks="outside",
-        tickfont=dict(color="#2D3748", size=10)
+        tickfont=dict(color="#2D3748", size=10),
+        title_font=dict(color="#2D3748", size=12, family="Arial")
     )
-    EJE_Y_BASE = dict(
-        showline=True,
-        linewidth=1.2,
-        linecolor="rgba(74, 85, 104, 0.5)",
-        ticks="outside",
-        tickfont=dict(color="#2D3748", size=10)
-    )
+
+    # ======================================================================
+    # KPIs PRINCIPALES DE SLA
+    # ======================================================================
+    st.markdown("---")
+    st.subheader("📊 Resumen General de Incumplimiento de SLA")
+    
+    total_incidents_raw = len(df_raw) # Total de incidentes desde la capa Gold (incluye no resueltos)
+    total_resolved = len(df_work)     # Solo incidentes con tiempo de resolución válido
+    total_non_compliant = df_work[df_work[is_sla_non_compliant_col] == 1].shape[0]
+    non_compliant_rate = (total_non_compliant / total_resolved) if total_resolved > 0 else 0
+
+    col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+    col_kpi1.metric("Total Incidentes (Dataset)", f"{total_incidents_raw:,}")
+    col_kpi2.metric("Incidentes Resueltos con SLA", f"{total_resolved:,}")
+    col_kpi3.metric("Incidentes Fuera de SLA", f"{total_non_compliant:,}")
+    col_kpi4.metric("Tasa de Incumplimiento SLA", f"{non_compliant_rate:.2%}")
+    st.markdown("---")
+
+
+    # ======================================================================
+    # DISTRIBUCIÓN POR CATEGORÍA Y BOROUGH (Enfoque en Incumplimiento SLA)
+    # ======================================================================
+    col_a, col_b = st.columns(2)
 
     with col_a:
-        st.subheader("Top 10 Quejas Principalmente Críticas")
-        if complaint_col:
-            top_complaints = df_work[complaint_col].value_counts().head(10).reset_index()
-            top_complaints.columns = ['Tipo', 'Cantidad']
-            # Ordenar ascendente para que el orden del array de colores coincida con el visual
-            top_complaints = top_complaints.sort_values('Cantidad', ascending=True).reset_index(drop=True)
+        st.subheader("Top 10 Categorías con Mayor Riesgo de Incumplimiento de SLA")
+        st.write("Identifica las quejas que más frecuentemente superan su tiempo esperado de resolución.")
+        if complaint_col and is_sla_non_compliant_col:
+            df_sla_rate_complaint = df_work.groupby(complaint_col)[is_sla_non_compliant_col].mean().reset_index()
+            df_sla_rate_complaint.columns = ['Tipo', 'Tasa de Incumplimiento']
+            df_sla_rate_complaint = df_sla_rate_complaint.sort_values('Tasa de Incumplimiento', ascending=False).head(10) # Top 10
+            df_sla_rate_complaint = df_sla_rate_complaint.sort_values('Tasa de Incumplimiento', ascending=True) # Orden ascendente para que el top quede arriba en el gráfico de barras
 
-            idx_max = top_complaints['Cantidad'].idxmax()  # último elemento = mayor
-            colores_quejas = [COLOR_NEUTRO] * len(top_complaints)
-            colores_quejas[idx_max] = COLOR_FOCO  # Resalta la categoría predominante (top)
+            idx_max = df_sla_rate_complaint['Tasa de Incumplimiento'].idxmax()
+            colores_quejas = [COLOR_NEUTRO] * len(df_sla_rate_complaint)
+            colores_quejas[idx_max] = COLOR_FOCO # Resaltar la categoría con mayor tasa
 
-            fig = px.bar(top_complaints, x='Cantidad', y='Tipo', orientation='h')
-            fig.update_traces(marker_color=colores_quejas, marker_line_color=colores_quejas, opacity=0.85)
+            fig = px.bar(df_sla_rate_complaint, x='Tasa de Incumplimiento', y='Tipo', orientation='h')
+            fig.update_traces(marker_color=colores_quejas, opacity=0.85)
 
             fig.add_annotation(
-                x=top_complaints.loc[idx_max, 'Cantidad'],
-                y=top_complaints.loc[idx_max, 'Tipo'],
-                text="Categoría predominante",
+                x=df_sla_rate_complaint.loc[idx_max, 'Tasa de Incumplimiento'],
+                y=df_sla_rate_complaint.loc[idx_max, 'Tipo'],
+                text=f"Mayor riesgo: {df_sla_rate_complaint.loc[idx_max, 'Tasa de Incumplimiento']:.1%}",
                 showarrow=True,
                 arrowhead=3,
-                ax=40,
-                ay=0,
-                font=dict(color=COLOR_FOCO, size=11),
+                ax=40, ay=0,
+                font=dict(color=COLOR_FOCO, size=11, weight='bold'),
                 arrowcolor=COLOR_FOCO,
                 bgcolor="rgba(255,255,255,0.8)"
             )
             
             fig.update_layout(
-                showlegend=False,
-                plot_bgcolor=COLOR_FONDO_LIGERO,
-                paper_bgcolor=COLOR_FONDO_LIGERO
-            )
-            fig.update_xaxes(
-                showline=True,
-                linewidth=1.2,
-                linecolor="rgba(74, 85, 104, 0.5)",
-                ticks="outside",
-                showgrid=False,
-                title_text="Número de Reportes",
-                title_font=dict(color="#2D3748", size=12, family="Arial"),
-                tickfont=dict(color="#2D3748", size=11)
-            )
-            fig.update_yaxes(
-                showline=True,
-                linewidth=1.2,
-                linecolor="rgba(74, 85, 104, 0.5)",
-                ticks="outside",
-                categoryorder='total ascending',
-                title_text="Tipo de Incidente",
-                title_font=dict(color="#2D3748", size=12, family="Arial"),
-                tickfont=dict(color="#2D3748", size=11)
+                showlegend=False, plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(**EJE_BASE_DICT, showgrid=False, tickformat=".0%", title_text="Tasa de Incumplimiento de SLA"),
+                yaxis=dict(**EJE_BASE_DICT, title_text="Tipo de Incidente", categoryorder='total ascending')
             )
             st.plotly_chart(fig, use_container_width=True)
 
     with col_b:
-        st.subheader("Distribución por Distrito (Volumen de Carga)")
-        if borough_col:
-            borough_dist = df_work[borough_col].value_counts().reset_index()
-            borough_dist.columns = ['Distrito', 'Total']
+        st.subheader("Tasa de Incumplimiento de SLA por Distrito (Borough)")
+        st.write("¿Qué boroughs muestran mayor dificultad para cumplir con los SLAs?")
+        if borough_col and is_sla_non_compliant_col:
+            borough_sla_rate = df_work.groupby(borough_col)[is_sla_non_compliant_col].mean().reset_index()
+            borough_sla_rate.columns = ['Distrito', 'Tasa de Incumplimiento']
             
-            borough_dist = borough_dist.sort_values(by='Total', ascending=True)
-            colores_distritos = [
-                COLOR_FOCO if dist == "BROOKLYN" else COLOR_NEUTRO 
-                for dist in borough_dist['Distrito']
-            ]
+            borough_sla_rate = borough_sla_rate.sort_values(by='Tasa de Incumplimiento', ascending=True)
             
-            fig = px.bar(borough_dist, x='Total', y='Distrito', orientation='h')
+            idx_max_borough = borough_sla_rate['Tasa de Incumplimiento'].idxmax()
+            colores_distritos = [COLOR_NEUTRO] * len(borough_sla_rate)
+            colores_distritos[idx_max_borough] = COLOR_FOCO # Resaltar el borough con la tasa más alta
+            
+            fig = px.bar(borough_sla_rate, x='Tasa de Incumplimiento', y='Distrito', orientation='h')
             fig.update_traces(marker_color=colores_distritos, opacity=0.85)
             
             fig.update_layout(
-                showlegend=False,
-                plot_bgcolor=COLOR_FONDO_LIGERO,
-                paper_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(
-                    **EJE_X_BASE,
-                    showgrid=False,
-                    title=dict(text="Total de Reportes", font=dict(color="#2D3748", size=11))
-                ),
-                yaxis=dict(
-                    **EJE_Y_BASE,
-                    title=dict(text="Distrito (Borough)", font=dict(color="#2D3748", size=11))
-                )
+                showlegend=False, plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(**EJE_BASE_DICT, showgrid=False, tickformat=".0%", title_text="Tasa de Incumplimiento de SLA"),
+                yaxis=dict(**EJE_BASE_DICT, title_text="Distrito (Borough)")
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    st.divider()
+    st.markdown("---")
 
-    if date_col:
-        st.subheader("Evolución Temporal de Incidentes")
-        df_daily = df_work.groupby(df_work[date_col].dt.date).size().reset_index()
-        df_daily.columns = ['Fecha', 'Total']
+
+    # ======================================================================
+    # EVOLUCIÓN TEMPORAL DE LA TASA DE INCUMPLIMIENTO DE SLA
+    # ======================================================================
+    if created_date_only_col and is_sla_non_compliant_col:
+        st.subheader("📈 Evolución Temporal de la Tasa de Incumplimiento de SLA")
+        st.write("Analiza cómo varía el riesgo de incumplimiento a lo largo del tiempo para detectar tendencias o anomalías.")
         
-        idx_max = df_daily['Total'].idxmax()
-        idx_min = df_daily['Total'].idxmin()
-        row_max = df_daily.loc[idx_max]
-        row_min = df_daily.loc[idx_min]
+        df_daily_sla = df_work.groupby(created_date_only_col)[is_sla_non_compliant_col].mean().reset_index()
+        df_daily_sla.columns = ['Fecha', 'Tasa de Incumplimiento']
+        df_daily_sla['Fecha'] = pd.to_datetime(df_daily_sla['Fecha']) # Asegurar tipo datetime
 
-        fig = px.line(df_daily, x='Fecha', y='Total')
+        # Identificar el punto de quiebre o anomalía (ej. donde la tasa es más alta)
+        idx_max = df_daily_sla['Tasa de Incumplimiento'].idxmax()
+        row_max = df_daily_sla.loc[idx_max]
+
+        fig = px.line(df_daily_sla, x='Fecha', y='Tasa de Incumplimiento')
         fig.update_traces(line_color=COLOR_NEUTRO, line_width=2, name="Tendencia")
         
-        # Pico Máximo (Rojo Estratégico)
+        # Resaltar el pico máximo de incumplimiento con COLOR_FOCO
         fig.add_trace(go.Scatter(
             x=[row_max['Fecha']], 
-            y=[row_max['Total']],
+            y=[row_max['Tasa de Incumplimiento']],
             mode='markers+text',
             marker=dict(color=COLOR_FOCO, size=12, line=dict(width=2, color='white')),
-            text=[f"Pico Máximo: {row_max['Total']}"],
+            text=[f"Pico SLA: {row_max['Tasa de Incumplimiento']:.1%}"],
             textposition="top center",
-            textfont=dict(color="#1A202C", size=12),
-            name="Máximo Histórico"
-        ))
-        
-        # Punto Mínimo
-        fig.add_trace(go.Scatter(
-            x=[row_min['Fecha']], 
-            y=[row_min['Total']],
-            mode='markers+text',
-            marker=dict(color="#3182CE", size=10, line=dict(width=2, color='white')),
-            text=[f"Mínimo: {row_min['Total']}"],
-            textposition="bottom center",
-            textfont=dict(color="#4A5568", size=11),
-            name="Mínimo Histórico"
+            textfont=dict(color=COLOR_FOCO, size=12, weight='bold'),
+            name="Máximo Incumplimiento"
         ))
         
         fig.update_layout(
-            showlegend=False,
-            plot_bgcolor=COLOR_FONDO_LIGERO,
-            paper_bgcolor=COLOR_FONDO_LIGERO,
-            xaxis=dict(
-                **EJE_X_BASE,
-                showgrid=False,
-                title=dict(text="Línea de Tiempo", font=dict(color="#2D3748", size=11))
-            ),
-            yaxis=dict(
-                **EJE_Y_BASE,
-                showgrid=True,
-                gridcolor="rgba(0,0,0,0.08)",
-                title=dict(text="Frecuencia Diaria de Casos", font=dict(color="#2D3748", size=11))
-            )
+            showlegend=False, plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+            xaxis=dict(**EJE_BASE_DICT, showgrid=False, title_text="Línea de Tiempo"),
+            yaxis=dict(**EJE_BASE_DICT, showgrid=True, gridcolor="rgba(0,0,0,0.08)", tickformat=".0%", title_text="Tasa Diaria de Incumplimiento")
         )
         st.plotly_chart(fig, use_container_width=True)
 
         # ======================================================================
-        # DISTRIBUCIÓN TEMPORAL: DÍA DE LA SEMANA Y DÍA DEL MES
+        # DISTRIBUCIÓN TEMPORAL: DÍA DE LA SEMANA Y HORA DEL DÍA
         # ======================================================================
-        df_work["weekday"] = df_work[date_col].dt.day_name().map({
-            "Monday": "Lunes",
-            "Tuesday": "Martes",
-            "Wednesday": "Miércoles",
-            "Thursday": "Jueves",
-            "Friday": "Viernes",
-            "Saturday": "Sábado",
-            "Sunday": "Domingo"
-        })
-        df_work["day_of_month"] = df_work[date_col].dt.day
+        st.subheader("⏰ Patrones de Incumplimiento de SLA por Día de la Semana y Hora del Día")
+        st.write("Identifica los días de la semana y las horas del día con mayor riesgo de no cumplir el SLA. Ayuda a programar recursos.")
 
-        weekday_dist = (
-            df_work.groupby("weekday")
-            .size()
-            .reset_index(name="Total")
+        weekday_sla_dist = (
+            df_work.groupby(created_day_of_week_name_col)[is_sla_non_compliant_col].mean().reset_index(name="Tasa de Incumplimiento")
         )
-        weekday_order = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-        weekday_dist["weekday"] = pd.Categorical(weekday_dist["weekday"], categories=weekday_order, ordered=True)
-        weekday_dist = weekday_dist.sort_values("weekday")
+        weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        weekday_sla_dist[created_day_of_week_name_col] = pd.Categorical(weekday_sla_dist[created_day_of_week_name_col], categories=weekday_order, ordered=True)
+        weekday_sla_dist = weekday_sla_dist.sort_values(created_day_of_week_name_col)
 
-        day_of_month_dist = (
-            df_work.groupby("day_of_month")
-            .size()
-            .reset_index(name="Total")
-            .sort_values("day_of_month")
+        hour_sla_dist = (
+            df_work.groupby(created_hour_col)[is_sla_non_compliant_col].mean().reset_index(name="Tasa de Incumplimiento")
+            .sort_values(created_hour_col)
         )
 
-        st.subheader("Patrones por Día de la Semana y Día del Mes")
-        row_weekday, row_monthday = st.columns(2)
+        row_time_1, row_time_2 = st.columns(2)
 
-        with row_weekday:
-            colores_weekday = [COLOR_FOCO if d == "Sábado" else COLOR_NEUTRO for d in weekday_dist["weekday"]]
-            fig_weekday = px.bar(weekday_dist, x="Total", y="weekday", orientation="h")
+        with row_time_1:
+            st.markdown("##### Por Día de la Semana")
+            # Resaltar el día con la tasa más alta
+            idx_max_weekday = weekday_sla_dist['Tasa de Incumplimiento'].idxmax()
+            colores_weekday = [COLOR_NEUTRO] * len(weekday_sla_dist)
+            colores_weekday[idx_max_weekday] = COLOR_FOCO # Resaltar con COLOR_FOCO
+            
+            fig_weekday = px.bar(weekday_sla_dist, x="Tasa de Incumplimiento", y=created_day_of_week_name_col, orientation="h")
             fig_weekday.update_traces(marker_color=colores_weekday, opacity=0.85)
             fig_weekday.update_layout(
-                showlegend=False,
-                plot_bgcolor=COLOR_FONDO_LIGERO,
-                paper_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis={
-                    **EJE_X_BASE,
-                    "showgrid": False,
-                    "title": {"text": "Total de Reportes", "font": {"color": "#2D3748", "size": 11}}
-                },
-                yaxis={
-                    **EJE_Y_BASE,
-                    "title": {"text": "Día de la Semana", "font": {"color": "#2D3748", "size": 11}}
-                }
+                showlegend=False, plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis={**EJE_BASE_DICT, "showgrid": False, "tickformat": ".0%", "title_text": "Tasa de Incumplimiento"},
+                yaxis={**EJE_BASE_DICT, "title_text": "Día de la Semana"},
+                height=350
             )
             st.plotly_chart(fig_weekday, use_container_width=True)
 
-        with row_monthday:
-            fig_day = px.bar(day_of_month_dist, x="day_of_month", y="Total")
-            fig_day.update_traces(marker_color=COLOR_NEUTRO, opacity=0.85)
-            fig_day.update_layout(
-                showlegend=False,
-                plot_bgcolor=COLOR_FONDO_LIGERO,
-                paper_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis={
-                    **EJE_X_BASE,
-                    "title": {"text": "Día del Mes", "font": {"color": "#2D3748", "size": 11}}
-                },
-                yaxis={
-                    **EJE_Y_BASE,
-                    "title": {"text": "Total de Reportes", "font": {"color": "#2D3748", "size": 11}}
-                }
+        with row_time_2:
+            st.markdown("##### Por Hora del Día")
+            # Resaltar la hora con la tasa más alta
+            idx_max_hour = hour_sla_dist['Tasa de Incumplimiento'].idxmax()
+            colores_hour = [COLOR_NEUTRO] * len(hour_sla_dist)
+            colores_hour[idx_max_hour] = COLOR_FOCO # Resaltar con COLOR_FOCO
+            
+            fig_hour = px.bar(hour_sla_dist, x=created_hour_col, y="Tasa de Incumplimiento")
+            fig_hour.update_traces(marker_color=colores_hour, opacity=0.85)
+            fig_hour.update_layout(
+                showlegend=False, plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis={**EJE_BASE_DICT, "title_text": "Hora del Día"},
+                yaxis={**EJE_BASE_DICT, "tickformat": ".0%", "title_text": "Tasa de Incumplimiento"},
+                height=350
             )
-            st.plotly_chart(fig_day, use_container_width=True)
+            st.plotly_chart(fig_hour, use_container_width=True)
 
-    st.divider()
+    st.markdown("---")
 
-    # ======================================================================
-    # NUEVA SECCIÓN: EFICIENCIA OPERATIVA (DETECCIÓN DE ANOMALÍAS EN SLAs)
-    # ======================================================================
-    st.subheader("⏳ Eficiencia y Cuellos de Botella en Respuesta (SLAs)")
-    st.write("Análisis del tiempo promedio requerido para resolver y cerrar incidentes por categoría.")
-    
-    if date_col and closed_col and complaint_col:
-        df_work['dias_resolucion'] = (df_work[closed_col] - df_work[date_col]).dt.total_seconds() / 86400
-        df_sla = df_work[df_work['dias_resolucion'] >= 0].dropna(subset=['dias_resolucion'])
-        
-        if not df_sla.empty:
-            df_sla_avg = df_sla.groupby(complaint_col)['dias_resolucion'].mean().reset_index()
-            df_sla_avg = df_sla_avg.sort_values(by='dias_resolucion', ascending=False).head(10)
-            df_sla_avg = df_sla_avg.sort_values(by='dias_resolucion', ascending=True)
-            
-            colores_sla = [COLOR_NEUTRO] * len(df_sla_avg)
-            colores_sla[-1] = COLOR_FOCO  
-            
-            fig_sla = px.bar(df_sla_avg, x='dias_resolucion', y=complaint_col, orientation='h')
-            fig_sla.update_traces(marker_color=colores_sla, opacity=0.9)
-            
-            peor_cat = df_sla_avg.iloc[-1][complaint_col]
-            peor_dia = df_sla_avg.iloc[-1]['dias_resolucion']
-            
-            fig_sla.update_layout(
-                plot_bgcolor=COLOR_FONDO_LIGERO,
-                paper_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(
-                    **EJE_X_BASE,
-                    showgrid=True,
-                    gridcolor="rgba(0,0,0,0.1)",
-                    title=dict(text="Días Promedio de Cierre", font=dict(color="#2D3748", size=11))
-                ),
-                yaxis=dict(
-                    **EJE_Y_BASE,
-                    title=dict(text="Categoría de Incidente", font=dict(color="#2D3748", size=11))
-                ),
-
-                xaxis_range=[0, peor_dia * 1.3],
-                annotations=[
-                    dict(
-                        x=peor_dia,
-                        y=peor_cat,
-                        text=f"⚠️ <b>RETRASO ANORMAL DETECTADO</b><br>La categoría <i>{peor_cat}</i> de la ciudad<br>rompe los SLAs con {peor_dia:.1f} días promedio.",
-                        showarrow=True,
-                        arrowhead=2,
-                        arrowcolor=COLOR_FOCO,
-                        ax=80,
-                        ay=0,
-                        font=dict(color=COLOR_FOCO, size=11),
-                        bgcolor="rgba(255, 255, 255, 0.95)",
-                        bordercolor=COLOR_FOCO,
-                        borderwidth=1
-                    )
-                ]
-            )
-            st.plotly_chart(fig_sla, use_container_width=True)
-        else:
-            st.info("No hay suficientes registros con fechas de cierre válidas para procesar SLAs.")
-            
-    st.divider()
 
     # ======================================================================
-    # CONTINUIDAD: CONCENTRACIÓN GEOGRÁFICA ORIGINAL
+    # MAPA DE CALOR GEOGRÁFICO POR TASA DE INCUMPLIMIENTO DE SLA (Community Districts)
     # ======================================================================
-    lat_col = next((col for col in df_work.columns if col.lower() == 'latitude'), None)
-    lon_col = next((col for col in df_work.columns if col.lower() == 'longitude'), None)
-    
-    if lat_col and lon_col:
-        st.subheader("Concentración Geográfica de Incidentes")
-        df_map = df_work.dropna(subset=[lat_col, lon_col]).sample(n=min(5000, len(df_work)))
-        
-        fig = px.scatter_mapbox(df_map, lat=lat_col, lon=lon_col,
-                                hover_name=complaint_col if complaint_col else None,
-                                zoom=10, height=600, mapbox_style="carto-positron")
-        
-        if borough_col:
-            colores_mapa = [COLOR_FOCO if b == "BROOKLYN" else "#718096" for b in df_map[borough_col]]
-            fig.update_traces(marker=dict(color=colores_mapa, size=4, opacity=0.6))
-            
-        fig.update_layout(margin=dict(t=10, b=10, l=10, r=10))
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Nota: Muestra aleatoria de 5,000 registros para optimización de memoria.")
-
-    st.divider()
-
-    # ======================================================================
-    # MAPA: COMMUNITY DISTRICTS DE NYC CON DENSIDAD DE INCIDENTES
-    # ======================================================================
-    st.subheader("🗺️ Incidentes por Community District (NYC)")
-    st.write("Cada polígono representa un Community District. El tono de color indica el volumen de reportes.")
-
-    # Columna Community Board del dataset NYC 311 (formato: "01 BROOKLYN", "12 QUEENS", etc.)
-    community_col = next(
-        (col for col in df_work.columns if 'community' in col.lower() and 'board' in col.lower()),
-        next((col for col in df_work.columns if 'community' in col.lower()), None)
-    )
+    st.header("🗺️ Concentración Geográfica del Riesgo de Incumplimiento de SLA")
+    st.write("Identifica las áreas (Community Districts) con la mayor tasa de incumplimiento de SLA. Las zonas **rojas** demandan atención inmediata.")
 
     if not lat_col or not lon_col:
         st.info("No hay columnas de latitud/longitud disponibles para este mapa.")
-    elif not community_col:
-        st.info(f"No se encontró la columna 'Community Board' en el dataset. Columnas disponibles: {list(df_work.columns)}")
+    elif not community_board_col:
+        st.info(f"No se encontró la columna '{community_board_col}' en el dataset.")
     else:
-        import requests
+        # Colores para el mapa de calor de incumplimiento de SLA (escala de verde a rojo)
+        COLORSCALE_SLA = [
+            [0.0, COLOR_OK],    # Verde para baja tasa de incumplimiento
+            [0.5, COLOR_ALERTA], # Amarillo para tasa media (punto de quiebre)
+            [1.0, COLOR_FOCO]   # Rojo para alta tasa de incumplimiento (anomalía, foco)
+        ]
 
-        # Mapa borough name → código numérico para construir BoroCD
+        # Funciones y diccionarios para el mapa (incluidos aquí para auto-contención)
         BORO_CODE = {
-            "MANHATTAN": 1, "MN": 1,
+            "MANHATTAN": 1, "MN": 1, "NEW YORK": 1,
             "BRONX": 2,     "BX": 2,
             "BROOKLYN": 3,  "BK": 3,
             "QUEENS": 4,    "QN": 4, "QS": 4,
             "STATEN ISLAND": 5, "SI": 5,
         }
-        # Paleta de colores por borough — cada uno con escala propia de baja a alta intensidad
         BORO_NAMES = {1: "Manhattan", 2: "Bronx", 3: "Brooklyn", 4: "Queens", 5: "Staten Island"}
 
-        # Escala por borough: [0=vacío, 0.2=pálido, 1.0=color vivo máximo]
-        BORO_SCALES = {
-            1: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#FFF59D"], [0.55, "#FFCA28"], [1.0, "#FF6F00"]],   # Manhattan: amarillo → naranja intenso
-            2: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#B9F6CA"], [0.55, "#00E676"], [1.0, "#00695C"]],   # Bronx: verde menta → verde profundo
-            3: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#BBDEFB"], [0.55, "#1E88E5"], [1.0, "#0D47A1"]],   # Brooklyn: celeste → azul marino
-            4: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#F8BBD9"], [0.55, "#E91E63"], [1.0, "#880E4F"]],   # Queens: rosa → fucsia profundo
-            5: [[0.0, "rgba(20,25,35,0.15)"], [0.2, "#E1BEE7"], [0.55, "#AB47BC"], [1.0, "#4A148C"]],   # Staten Island: lila → morado oscuro
-        }
-        # Color representativo de cada borough (tono medio) para puntos y leyenda
-        BORO_COLOR = {1: "#FFCA28", 2: "#00E676", 3: "#1E88E5", 4: "#E91E63", 5: "#AB47BC"}
-
         def parse_borocd(val):
-            """Convierte '01 BROOKLYN' → 301, '12 QUEENS' → 412, etc."""
+            """Convierte '01 BROOKLYN' → 301, '12 QUEENS' → 412, etc. Y maneja 'N/A'"""
             try:
+                if val == 'N/A' or pd.isna(val):
+                    return None
                 parts = str(val).strip().split()
-                if len(parts) < 2:
+                if len(parts) < 2: # Puede ser solo un número o un nombre
+                    if str(val).isdigit(): # Si es solo un número, asumimos que es el CD sin Borough
+                         # Esto es una simplificación, idealmente se necesita el Borough
+                         # Aquí asignaremos al borough 1 (Manhattan) por defecto si no hay info
+                        return 100 + int(val) 
                     return None
                 num = int(parts[0])
                 boro_str = " ".join(parts[1:]).upper()
-                # Busca coincidencia exacta o parcial
                 code = BORO_CODE.get(boro_str)
-                if code is None:
+                if code is None: # Intento de búsqueda parcial o por sinónimos
                     for key, v in BORO_CODE.items():
-                        if key in boro_str or boro_str in key:
+                        if boro_str in key or key in boro_str:
                             code = v
                             break
                 if code is None:
@@ -414,16 +330,16 @@ def render_dynamic_charts(df: pd.DataFrame):
             except Exception:
                 return None
 
-        df_cd = df_work.dropna(subset=[community_col]).copy()
-        df_cd['borocd'] = df_cd[community_col].apply(parse_borocd)
-        df_cd = df_cd.dropna(subset=['borocd'])
-        df_cd['borocd'] = df_cd['borocd'].astype(int)
-        df_cd['boro_code'] = (df_cd['borocd'] // 100).astype(int)
+        df_cd_map_source = df_work.dropna(subset=[community_board_col, is_sla_non_compliant_col]).copy()
+        df_cd_map_source['borocd'] = df_cd_map_source[community_board_col].apply(parse_borocd)
+        df_cd_map_source = df_cd_map_source.dropna(subset=['borocd'])
+        df_cd_map_source['borocd'] = df_cd_map_source['borocd'].astype(int)
+        df_cd_map_source['boro_code'] = (df_cd_map_source['borocd'] // 100).astype(int)
 
-        # Frecuencia por Community District
-        df_freq_cd = df_cd.groupby(['borocd', 'boro_code']).size().reset_index(name='incidentes')
+        # Tasa de incumplimiento por Community District (usando df_cd_map_source para asegurar que tiene borocd)
+        df_sla_cd_rate = df_cd_map_source.groupby(['borocd', 'boro_code'])[is_sla_non_compliant_col].mean().reset_index(name='tasa_incumplimiento')
 
-        # Descarga del GeoJSON
+        # Descarga del GeoJSON (tu URL original)
         GEOJSON_CD_URL = (
             "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/"
             "NYC_Community_Districts/FeatureServer/0/query"
@@ -445,311 +361,216 @@ def render_dynamic_charts(df: pd.DataFrame):
         geojson_cd = fetch_cd_geojson()
 
         if not geojson_cd:
-            st.caption("⚠️ GeoJSON no disponible. Mostrando mapa de puntos por Community District.")
-            fig_cd_fall = px.scatter_mapbox(
-                df_cd.dropna(subset=[lat_col, lon_col]).sample(n=min(8000, len(df_cd))),
-                lat=lat_col, lon=lon_col,
-                color='boro_code',
-                color_continuous_scale=list(BORO_PALETTE.values()),
-                zoom=10, height=640, mapbox_style="carto-positron"
-            )
-            fig_cd_fall.update_layout(margin=dict(t=10,b=10,l=10,r=10), paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_cd_fall, use_container_width=True)
+            st.caption("⚠️ GeoJSON de Community Districts no disponible. No se puede mostrar el mapa coroplético. Asegúrate de tener conexión a internet.")
         else:
-            # ── Control de filtro de criticidad ────────────────────────────
-            col_toggle, col_desc = st.columns([0.35, 0.65])
-            with col_toggle:
-                solo_criticos = st.toggle(
-                    "🔴 Solo zonas críticas",
-                    value=False,
-                    help="Activa para ocultar distritos de baja carga y resaltar solo los más saturados."
+            fig_cd = go.Figure(go.Choroplethmapbox(
+                geojson=geojson_cd,
+                locations=df_sla_cd_rate['borocd'],
+                z=df_sla_cd_rate['tasa_incumplimiento'],
+                featureidkey="properties.BoroCD",
+                colorscale=COLORSCALE_SLA,
+                zmin=0, # Escala de 0 a 1 (0% a 100% de incumplimiento)
+                zmax=1,
+                marker_opacity=0.8,
+                marker_line_width=1,
+                marker_line_color="rgba(255,255,255,0.4)",
+                hovertemplate=(
+                    "<b>Distrito: %{location}</b><br>"
+                    "Tasa de Incumplimiento SLA: <b>%{z:.1%}</b><extra></extra>"
+                ),
+                colorbar=dict(
+                    title="Tasa Incumplimiento SLA",
+                    titleside="right",
+                    bgcolor="rgba(255,255,255,0.8)",
+                    tickformat=".0%"
                 )
-            with col_desc:
-                if solo_criticos:
-                    st.markdown(
-                        "<div style='padding:8px 12px;background:rgba(217,56,58,0.08);"
-                        "border-left:3px solid #C0292B;border-radius:4px;margin-top:4px;'>"
-                        "<span style='color:#C0292B;font-size:12px;font-weight:700;'>MODO CRÍTICO ACTIVO</span>"
-                        "<span style='color:#4A5568;font-size:12px;'> · Solo se muestran los distritos en el top 30% de incidentes por borough.</span>"
-                        "</div>",
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.markdown(
-                        "<div style='padding:8px 12px;background:rgba(0,0,0,0.04);"
-                        "border-left:3px solid #718096;border-radius:4px;margin-top:4px;'>"
-                        "<span style='color:#4A5568;font-size:12px;'>Todos los distritos visibles · "
-                        "Activa el botón para resaltar solo las zonas más críticas.</span>"
-                        "</div>",
-                        unsafe_allow_html=True
-                    )
-
-            # Asignar color por borough y opacidad/z por incidentes
-            max_inc = df_freq_cd['incidentes'].max()
-
-            # Construir figura con un trace coroplético POR BOROUGH para colores distintos
-            fig_cd = go.Figure()
-
-            for boro_code, boro_name in BORO_NAMES.items():
-                df_b = df_freq_cd[df_freq_cd['boro_code'] == boro_code].copy()
-                if df_b.empty:
-                    continue
-
-                boro_max = df_b['incidentes'].max() if not df_b.empty else 1
-
-                if solo_criticos:
-                    # Umbral: percentil 70 dentro del borough → solo muestra el top 30%
-                    umbral = df_b['incidentes'].quantile(0.70)
-                    df_b = df_b[df_b['incidentes'] >= umbral]
-                    if df_b.empty:
-                        continue
-                fig_cd.add_trace(go.Choroplethmapbox(
-                    geojson=geojson_cd,
-                    locations=df_b['borocd'],
-                    z=df_b['incidentes'],
-                    featureidkey="properties.BoroCD",
-                    colorscale=BORO_SCALES[boro_code],
-                    zmin=0,
-                    zmax=boro_max,          # escala independiente por borough
-                    showscale=False,
-                    marker_opacity=0.88,
-                    marker_line_width=1.4,
-                    marker_line_color="rgba(255,255,255,0.45)",
-                    hovertemplate=(
-                        f"<b>{boro_name}</b> — Distrito %{{location}}<br>"
-                        "Incidentes: <b>%{z:,}</b><extra></extra>"
-                    ),
-                    name=boro_name
-                ))
-
-            # Puntos superpuestos (muestra) coloreados por borough
-            if lat_col and lon_col:
-                df_pts_src = df_cd.dropna(subset=[lat_col, lon_col])
-                if solo_criticos:
-                    # Solo puntos de distritos críticos (top 30% global)
-                    umbral_global = df_freq_cd['incidentes'].quantile(0.70)
-                    distritos_criticos = set(
-                        df_freq_cd[df_freq_cd['incidentes'] >= umbral_global]['borocd'].astype(int).tolist()
-                    )
-                    df_pts_src = df_pts_src[df_pts_src['borocd'].astype(int).isin(distritos_criticos)]
-                df_pts = df_pts_src.sample(n=min(5000, len(df_pts_src))) if not df_pts_src.empty else df_pts_src
-                colores_pts = [BORO_COLOR.get(int(b) // 100, "#718096") for b in df_pts['borocd']]
-
-                fig_cd.add_trace(go.Scattermapbox(
-                    lat=df_pts[lat_col],
-                    lon=df_pts[lon_col],
-                    mode='markers',
-                    marker=dict(size=3, color=colores_pts, opacity=0.45),
-                    hovertemplate=(
-                        "Distrito: %{customdata}<br>"
-                        + (f"Queja: %{{text}}<br>" if complaint_col else "")
-                        + "<extra></extra>"
-                    ),
-                    text=df_pts[complaint_col].astype(str) if complaint_col else None,
-                    customdata=df_pts['borocd'],
-                    name="Puntos"
-                ))
+            ))
 
             fig_cd.update_layout(
                 mapbox=dict(
                     style="carto-positron",
                     center=dict(lat=40.7128, lon=-74.0060),
-                    zoom=10
+                    zoom=9.5
                 ),
                 margin=dict(t=10, b=10, l=10, r=10),
                 height=660,
-                showlegend=True,
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom", y=0.01,
-                    xanchor="left", x=0.01,
-                    bgcolor="rgba(255,255,255,0.88)",
-                    font=dict(color="#2D3748", size=11),
-                    itemclick=False
-                ),
+                showlegend=False,
                 paper_bgcolor="white"
             )
             st.plotly_chart(fig_cd, use_container_width=True)
 
-            # ── Leyenda de colores ──────────────────────────────────────────
-            leyenda_items = "".join([
-                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-                f'<div style="width:48px;height:14px;border-radius:3px;'
-                f'background:linear-gradient(to right,{BORO_SCALES[k][1][1]},{BORO_SCALES[k][-1][1]});"></div>'
-                f'<span style="color:#2D3748;font-size:13px;"><b>{v}</b> — pálido = poco · saturado = mucho</span></div>'
-                for k, v in BORO_NAMES.items()
-            ])
             st.markdown(
                 f"""
                 <div style="padding:12px 16px; border-left:4px solid #4A5568;
                             background:rgba(0,0,0,0.04); border-radius:4px; margin-bottom:18px;">
-                    <span style="color:#2D3748; font-size:12px; font-weight:700; letter-spacing:1px;">LEYENDA DE COLORES</span><br><br>
-                    {leyenda_items}
+                    <span style="color:#2D3748; font-size:12px; font-weight:700; letter-spacing:1px;">LEYENDA</span><br><br>
+                    <span style='color:{COLOR_OK};font-weight:600;'>🟢 Verde</span> = Baja tasa de incumplimiento de SLA<br>
+                    <span style='color:{COLOR_ALERTA};font-weight:600;'>🟡 Amarillo</span> = Tasa media de incumplimiento de SLA<br>
+                    <span style='color:{COLOR_FOCO};font-weight:600;'>🔴 Rojo</span> = Alta tasa de incumplimiento de SLA
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-            # ── Ranking por distrito dentro de cada Borough ─────────────────
-            st.markdown("### 🏆 Ranking de Distritos por Borough")
+    st.markdown("---")
 
-            # Tarjeta FOCO CRÍTICO OPERATIVO: queja más repetida en todo el dataset
-            if complaint_col:
-                queja_global = df_cd[complaint_col].value_counts()
-                complaint_moda   = queja_global.index[0] if not queja_global.empty else "N/A"
-                # Descriptor más común asociado a esa queja
-                descriptor_col = next((c for c in df_cd.columns if 'descriptor' in c.lower()), None)
-                if descriptor_col:
-                    descriptor_moda = (
-                        df_cd[df_cd[complaint_col] == complaint_moda][descriptor_col]
-                        .value_counts().index[0]
-                        if not df_cd[df_cd[complaint_col] == complaint_moda].empty else "N/A"
-                    )
-                else:
-                    descriptor_moda = "N/A"
 
+    # ======================================================================
+    # ANÁLISIS POR AGENCIA Y CANAL (Incumplimiento SLA)
+    # ======================================================================
+    st.header("🏢 Impacto de Agencias y Canales en el Incumplimiento de SLA")
+    st.write("¿Qué agencias y canales de reporte tienen mayor dificultad para cumplir con los SLAs? Esto puede guiar decisiones operativas.")
+
+    if agency_col and channel_col and is_sla_non_compliant_col:
+        col_agency_sla, col_channel_sla = st.columns(2)
+
+        with col_agency_sla:
+            st.markdown("##### Tasa de Incumplimiento por Agencia")
+            df_agency_sla = df_work.groupby(agency_col)[is_sla_non_compliant_col].mean().reset_index(name='Tasa de Incumplimiento')
+            df_agency_sla = df_agency_sla.sort_values('Tasa de Incumplimiento', ascending=False).head(10).sort_values('Tasa de Incumplimiento', ascending=True)
+
+            idx_max_agency = df_agency_sla['Tasa de Incumplimiento'].idxmax()
+            colores_agency = [COLOR_NEUTRO] * len(df_agency_sla)
+            colores_agency[idx_max_agency] = COLOR_FOCO # Resaltar con COLOR_FOCO
+
+            fig_agency_sla = px.bar(df_agency_sla, x='Tasa de Incumplimiento', y=agency_col, orientation='h')
+            fig_agency_sla.update_traces(marker_color=colores_agency, opacity=0.85)
+            fig_agency_sla.update_layout(
+                showlegend=False, plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(**EJE_BASE_DICT, showgrid=False, tickformat=".0%", title_text="Tasa de Incumplimiento"),
+                yaxis=dict(**EJE_BASE_DICT, title_text="Agencia"), height=400
+            )
+            st.plotly_chart(fig_agency_sla, use_container_width=True)
+
+        with col_channel_sla:
+            st.markdown("##### Tasa de Incumplimiento por Canal de Reporte")
+            df_channel_sla = df_work.groupby(channel_col)[is_sla_non_compliant_col].mean().reset_index(name='Tasa de Incumplimiento')
+            df_channel_sla = df_channel_sla.sort_values('Tasa de Incumplimiento', ascending=False)
+            
+            idx_max_channel = df_channel_sla['Tasa de Incumplimiento'].idxmax()
+            colores_channel = [COLOR_NEUTRO] * len(df_channel_sla)
+            colores_channel[idx_max_channel] = COLOR_FOCO # Resaltar con COLOR_FOCO
+
+            fig_channel_sla = px.bar(df_channel_sla, x='Tasa de Incumplimiento', y=channel_col, orientation='h')
+            fig_channel_sla.update_traces(marker_color=colores_channel, opacity=0.85)
+            fig_channel_sla.update_layout(
+                showlegend=False, plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
+                xaxis=dict(**EJE_BASE_DICT, showgrid=False, tickformat=".0%", title_text="Tasa de Incumplimiento"),
+                yaxis=dict(**EJE_BASE_DICT, title_text="Canal de Reporte"), height=400
+            )
+            st.plotly_chart(fig_channel_sla, use_container_width=True)
+
+    st.markdown("---")
+
+    # ======================================================================
+    # RANKING POR DISTRITO (Incumplimiento SLA)
+    # ======================================================================
+    if community_board_col and complaint_col:
+        st.header("🏆 Ranking de Distritos por Riesgo de Incumplimiento de SLA")
+        st.write("Identifica los distritos con la mayor tasa de incumplimiento y el tipo de queja más frecuente asociado a ese riesgo.")
+
+        # Obtener la tasa de incumplimiento por distrito y la queja más común
+        df_district_sla_agg = (
+            df_cd_map_source.groupby(['borocd', 'boro_code', complaint_col])
+            .agg(
+                tasa_incumplimiento=(is_sla_non_compliant_col, 'mean'),
+                conteo_quejas=('Unique Key', 'count')
+            )
+            .reset_index()
+        )
+        
+        # Encontrar la queja más frecuente por distrito (basado en volumen, no en SLA)
+        idx_top_complaint = df_district_sla_agg.loc[df_district_sla_agg.groupby('borocd')['conteo_quejas'].idxmax()]
+        df_top_complaint_per_district = idx_top_complaint[['borocd', complaint_col]] \
+                                        .rename(columns={complaint_col: 'Queja Más Frecuente (Volumen)'})
+
+        df_district_full = df_sla_cd_rate.merge(df_top_complaint_per_district, on='borocd', how='left')
+        df_district_full['Borough'] = df_district_full['boro_code'].map(BORO_NAMES)
+        df_district_full['Distrito'] = df_district_full['borocd'].astype(str)
+        df_district_full = df_district_full.rename(columns={'tasa_incumplimiento': 'Tasa Incumplimiento SLA'})
+        
+        tab_labels = ["🌆 Todos"] + [f"{BORO_NAMES[k]}" for k in sorted(BORO_NAMES.keys())]
+        tabs = st.tabs(tab_labels)
+
+        BORO_ACCENT = {1: "#FFCA28", 2: "#00E676", 3: "#1E88E5", 4: "#E91E63", 5: "#AB47BC"} # Colores para el ranking por borough
+
+        def styled_ranking(df_in, accent_color="#D9383A"):
+            df_show = (
+                df_in[['Distrito', 'Borough', 'Tasa Incumplimiento SLA', 'Queja Más Frecuente (Volumen)']]
+                .sort_values('Tasa Incumplimiento SLA', ascending=False)
+                .reset_index(drop=True)
+            )
+            df_show.index += 1
+            df_show['Tasa Incumplimiento SLA'] = df_show['Tasa Incumplimiento SLA'].apply(lambda x: f"{x:.1%}")
+            return df_show
+
+        with tabs[0]:
+            df_all = styled_ranking(df_district_full)
+            st.dataframe(df_all, use_container_width=True, height=400)
+
+        for i, (boro_code, boro_name) in enumerate(sorted(BORO_NAMES.items()), start=1):
+            with tabs[i]:
+                df_b = df_district_full[df_district_full['boro_code'] == boro_code]
+                if df_b.empty:
+                    st.info(f"Sin datos para {boro_name}.")
+                    continue
+                df_show = styled_ranking(df_b, accent_color=BORO_ACCENT.get(boro_code, "#fff"))
+
+                top_district = df_show.iloc[0]
+                accent = BORO_ACCENT.get(boro_code, "#fff")
                 st.markdown(
-                    f"""
-                    <div style="
-                        background-color: rgba(192, 41, 43, 0.06);
-                        border-left: 5px solid #C0292B;
-                        padding: 20px;
-                        border-radius: 6px;
-                        margin-bottom: 22px;
-                        border-top: 1px solid rgba(192, 41, 43, 0.15);
-                        border-right: 1px solid rgba(192, 41, 43, 0.15);
-                        border-bottom: 1px solid rgba(192, 41, 43, 0.15);
-                    ">
-                        <span style="color:#C0292B; font-size:13px; font-weight:bold; letter-spacing:1px;">🚨 FOCO CRÍTICO OPERATIVO</span>
-                        <h2 style="margin: 5px 0 0 0; font-size: 30px; font-weight: 800; color: #C0292B;">{complaint_moda}</h2>
-                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #4A5568;">
-                            Esta es la categoría con mayor recurrencia en toda la ciudad.
-                            Específicamente bajo la modalidad de: <b>{descriptor_moda}</b>.
-                        </p>
-                    </div>
-                    """,
+                    f"""<div style="padding:10px 14px;border-left:4px solid {accent};
+                        background:rgba(0,0,0,0.04);border-radius:4px;margin-bottom:12px;">
+                        <span style="color:{accent};font-size:12px;font-weight:700;">DISTRITO CON MAYOR INCUMPLIMIENTO DE SLA</span><br>
+                        <span style="font-size:22px;font-weight:800;color:#1A202C;">Distrito {top_district['Distrito']}</span>
+                        <span style="color:#4A5568;font-size:13px;margin-left:10px;">{top_district['Tasa Incumplimiento SLA']} de incumplimiento</span><br>
+                        <span style="color:#4A5568;font-size:13px;">Queja dominante: <b style="color:#1A202C;">{top_district['Queja Más Frecuente (Volumen)']}</b></span>
+                    </div>""",
                     unsafe_allow_html=True
                 )
-
-            st.write("Top distritos con más incidentes y el tipo de queja más frecuente en cada uno.")
-
-            # Construir tabla enriquecida: borocd + incidentes + queja más común
-            if complaint_col:
-                df_district_detail = (
-                    df_cd.groupby(['borocd', 'boro_code', complaint_col])
-                    .size()
-                    .reset_index(name='cnt')
+                st.dataframe(
+                    df_show[['Distrito', 'Tasa Incumplimiento SLA', 'Queja Más Frecuente (Volumen)']],
+                    use_container_width=True
                 )
-                # Queja más común por distrito
-                idx_top = df_district_detail.groupby('borocd')['cnt'].idxmax()
-                df_top_complaint = df_district_detail.loc[idx_top][['borocd', complaint_col]]\
-                                                     .rename(columns={complaint_col: 'Queja Más Frecuente'})
-                df_district_full = df_freq_cd.merge(df_top_complaint, on='borocd', how='left')
-            else:
-                df_district_full = df_freq_cd.copy()
-                df_district_full['Queja Más Frecuente'] = 'N/A'
+        st.caption(f"Los rankings muestran la tasa de incumplimiento de SLA por Community District. Las zonas con mayor tasa indican puntos críticos para la gestión operativa.")
 
-            df_district_full['Borough'] = df_district_full['boro_code'].map(BORO_NAMES)
-            df_district_full['Distrito'] = df_district_full['borocd'].astype(str)
-            df_district_full = df_district_full.rename(columns={'incidentes': 'Total Incidentes'})
-
-            # Tabs: uno por borough + uno global
-            tab_labels = ["🌆 Todos"] + [f"{BORO_NAMES[k]}" for k in sorted(BORO_NAMES.keys())]
-            tabs = st.tabs(tab_labels)
-
-            BORO_ACCENT = {1: "#FFCA28", 2: "#00E676", 3: "#1E88E5", 4: "#E91E63", 5: "#AB47BC"}
-
-            def styled_ranking(df_in, accent="#D9383A"):
-                df_show = (
-                    df_in[['Distrito', 'Borough', 'Total Incidentes', 'Queja Más Frecuente']]
-                    .sort_values('Total Incidentes', ascending=False)
-                    .reset_index(drop=True)
-                )
-                df_show.index += 1
-                return df_show
-
-            with tabs[0]:
-                df_all = styled_ranking(df_district_full)
-                st.dataframe(df_all, use_container_width=True, height=400)
-
-            for i, (boro_code, boro_name) in enumerate(sorted(BORO_NAMES.items()), start=1):
-                with tabs[i]:
-                    df_b = df_district_full[df_district_full['boro_code'] == boro_code]
-                    if df_b.empty:
-                        st.info(f"Sin datos para {boro_name}.")
-                        continue
-                    df_show = styled_ranking(df_b, accent=BORO_ACCENT.get(boro_code, "#fff"))
-
-                    top_district = df_show.iloc[0]
-                    accent = BORO_ACCENT.get(boro_code, "#fff")
-                    st.markdown(
-                        f"""<div style="padding:10px 14px;border-left:4px solid {accent};
-                            background:rgba(0,0,0,0.04);border-radius:4px;margin-bottom:12px;">
-                            <span style="color:{accent};font-size:12px;font-weight:700;">DISTRITO MÁS CRÍTICO</span><br>
-                            <span style="font-size:22px;font-weight:800;color:#1A202C;">Distrito {top_district['Distrito']}</span>
-                            <span style="color:#4A5568;font-size:13px;margin-left:10px;">{int(top_district['Total Incidentes']):,} incidentes</span><br>
-                            <span style="color:#4A5568;font-size:13px;">Queja dominante: <b style="color:#1A202C;">{top_district['Queja Más Frecuente']}</b></span>
-                        </div>""",
-                        unsafe_allow_html=True
-                    )
-                    st.dataframe(
-                        df_show[['Distrito', 'Total Incidentes', 'Queja Más Frecuente']],
-                        use_container_width=True
-                    )
-            st.caption(f"71 Community Districts · Columna detectada: '{community_col}' · Muestra de 5,000 puntos")
-
-    st.divider()
+    st.markdown("---")
 
     # ======================================================================
-    # SECCIÓN: ANÁLISIS DE RESOLUCIÓN DE INCIDENTES
+    # ANÁLISIS DE TIEMPOS DE RESOLUCIÓN GENERALES (Contexto)
+    # Se utiliza df_raw aquí para mostrar el contexto general de todos los incidentes
     # ======================================================================
-    resolution_date_col = next(
-        (col for col in df_work.columns if 'resolution' in col.lower() and 'date' in col.lower()),
-        next((col for col in df_work.columns if 'action' in col.lower() and 'date' in col.lower()), None)
-    )
-    resolution_desc_col = next(
-        (col for col in df_work.columns if 'resolution' in col.lower() and 'description' in col.lower()), None
-    )
+    if resolution_time_col:
+        st.header("⚙️ Análisis de Tiempos de Resolución Generales (Contexto)")
+        st.write("Estadísticas del tiempo que toma cerrar los incidentes, sin filtrar por SLA. Esto proporciona un contexto del rendimiento general.")
 
-    if resolution_date_col and date_col:
-        st.header("⚙️ Análisis de Resolución de Incidentes")
-        st.write("Tiempos de cierre y patrones de resolución extraídos del campo *Resolution Action Updated Date*.")
+        df_res_general = df_raw[df_raw[resolution_time_col].notna()].copy()
+        # Filtramos valores extremos para un histograma legible, ej. > 1 año
+        df_res_general = df_res_general[(df_res_general[resolution_time_col] > 0) & (df_res_general[resolution_time_col] < 365)]
 
-        df_res = df_work.copy()
-        df_res[resolution_date_col] = pd.to_datetime(df_res[resolution_date_col], errors='coerce')
-        df_res['horas_resolucion'] = (
-            df_res[resolution_date_col] - df_res[date_col]
-        ).dt.total_seconds() / 3600
-
-        # Filtrar: solo tiempos positivos y razonables (< 1 año = 8760h)
-        df_res = df_res[(df_res['horas_resolucion'] > 0) & (df_res['horas_resolucion'] < 8760)].copy()
-        df_res['dias_resolucion'] = df_res['horas_resolucion'] / 24
-
-        if df_res.empty:
-            st.info("No hay suficientes datos con fechas de resolución válidas.")
+        if df_res_general.empty:
+            st.info("No hay suficientes datos con tiempos de resolución válidos para un análisis general.")
         else:
-            # ── KPIs globales ───────────────────────────────────────────────
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("⏱ Tiempo Mediano", f"{df_res['dias_resolucion'].median():.1f} días")
-            k2.metric("⚡ Resolución Más Rápida", f"{df_res['horas_resolucion'].min():.1f} h")
-            k3.metric("🐢 Resolución Más Lenta", f"{df_res['dias_resolucion'].max():.0f} días")
-            k4.metric("📊 Promedio General", f"{df_res['dias_resolucion'].mean():.1f} días")
+            k1.metric("⏱ Tiempo Mediano", f"{df_res_general[resolution_time_col].median():.1f} días")
+            k2.metric("⚡ Resolución Más Rápida", f"{df_res_general[resolution_time_col].min():.1f} días")
+            k3.metric("🐢 Resolución Más Lenta", f"{df_res_general[resolution_time_col].max():.0f} días")
+            k4.metric("📊 Promedio General", f"{df_res_general[resolution_time_col].mean():.1f} días")
 
-            st.divider()
+            st.markdown("---")
 
-            # ── Gráfica 1: Distribución de tiempos (histograma) ────────────
-            st.subheader("📊 Distribución del Tiempo de Resolución")
-            df_hist = df_res[df_res['dias_resolucion'] <= 60]  # zoom: primeros 60 días
+            st.subheader("📊 Distribución del Tiempo de Resolución General")
+            df_hist = df_res_general[df_res_general[resolution_time_col] <= 60] # Zoom en los primeros 60 días
             fig_hist = go.Figure()
             fig_hist.add_trace(go.Histogram(
-                x=df_hist['dias_resolucion'],
+                x=df_hist[resolution_time_col],
                 nbinsx=60,
                 marker_color=COLOR_NEUTRO,
                 opacity=0.85,
                 name="Distribución"
             ))
             # Línea de mediana
-            mediana = df_res['dias_resolucion'].median()
+            mediana = df_res_general[resolution_time_col].median()
             fig_hist.add_vline(
                 x=mediana, line_dash="dash", line_color=COLOR_FOCO, line_width=2,
                 annotation_text=f"Mediana: {mediana:.1f}d",
@@ -758,162 +579,10 @@ def render_dynamic_charts(df: pd.DataFrame):
             )
             fig_hist.update_layout(
                 plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(**EJE_X_BASE, showgrid=False,
-                           title=dict(text="Días hasta Resolución", font=dict(color="#2D3748", size=11))),
-                yaxis=dict(**EJE_Y_BASE, showgrid=True, gridcolor="rgba(0,0,0,0.08)",
-                           title=dict(text="Cantidad de Incidentes", font=dict(color="#2D3748", size=11))),
+                xaxis=dict(**EJE_BASE_DICT, showgrid=False, title_text="Días hasta Resolución"),
+                yaxis=dict(**EJE_BASE_DICT, showgrid=True, gridcolor="rgba(0,0,0,0.08)", title_text="Cantidad de Incidentes"),
                 showlegend=False, height=350
             )
             st.plotly_chart(fig_hist, use_container_width=True)
             st.caption("Vista limitada a los primeros 60 días para mejor lectura. La línea roja marca la mediana.")
 
-            st.divider()
-
-            # ── Tabla maestra: todas las categorías con volumen + tiempos ──
-            if complaint_col:
-                # Volumen total por categoría (de todo el dataset, no solo los resueltos)
-                df_vol = df_work[complaint_col].value_counts().reset_index()
-                df_vol.columns = [complaint_col, 'total_incidentes']
-
-                # Tiempos de resolución por categoría
-                df_avg_tipo = (
-                    df_res.groupby(complaint_col)['dias_resolucion']
-                    .agg(
-                        promedio='mean',
-                        mediana='median',
-                        mejor='min',
-                        peor='max',
-                        resueltos='count'
-                    )
-                    .reset_index()
-                )
-
-                # Unir: volumen + tiempos
-                df_cat = df_vol.merge(df_avg_tipo, on=complaint_col, how='left')
-                df_cat = df_cat.dropna(subset=['promedio'])
-                df_cat = df_cat[df_cat['resueltos'] >= 30]  # mínimo estadístico
-                df_cat = df_cat.sort_values('total_incidentes', ascending=False).reset_index(drop=True)
-                df_cat.index += 1
-
-                # ── Gráficas 3 y 4: Top categorías por volumen, coloreadas por tiempo ─
-                st.subheader("📊 Top Categorías: Incidentes Reportados y su Tiempo de Resolución")
-                st.write("Las barras están ordenadas por **cantidad de incidentes**. "
-                         "El color de cada barra indica qué tan lento se resuelve esa categoría.")
-
-                df_top20 = df_cat.head(20).sort_values('total_incidentes', ascending=True)
-                # Color: escala de verde (rápido) a rojo (lento) según promedio relativo
-                max_dias = df_top20['promedio'].max()
-                min_dias = df_top20['promedio'].min()
-
-                def dias_a_color(d):
-                    ratio = (d - min_dias) / (max_dias - min_dias + 0.001)
-                    if ratio < 0.25:   return "#00C853"   # Verde: rápido
-                    elif ratio < 0.50: return "#FFD600"   # Amarillo: medio
-                    elif ratio < 0.75: return "#FF9800"   # Naranja: lento
-                    else:              return COLOR_FOCO  # Rojo: muy lento
-
-                colores_vol = [dias_a_color(d) for d in df_top20['promedio']]
-
-                fig_vol = go.Figure()
-                fig_vol.add_trace(go.Bar(
-                    x=df_top20['total_incidentes'],
-                    y=df_top20[complaint_col],
-                    orientation='h',
-                    marker_color=colores_vol,
-                    opacity=0.88,
-                    customdata=df_top20[['promedio', 'mediana', 'mejor', 'peor', 'resueltos']].values,
-                    hovertemplate=(
-                        "<b>%{y}</b><br>"
-                        "Total incidentes: %{x:,}<br>"
-                        "Prom. resolución: %{customdata[0]:.1f}d<br>"
-                        "Mediana: %{customdata[1]:.1f}d<br>"
-                        "⚡ Más rápido: %{customdata[2]:.1f}d<br>"
-                        "🐢 Más lento: %{customdata[3]:.0f}d<br>"
-                        "Casos resueltos: %{customdata[4]:,}"
-                        "<extra></extra>"
-                    )
-                ))
-                # Leyenda de colores debajo del título
-                fig_vol.update_layout(
-                    plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                    xaxis=dict(**EJE_X_BASE, showgrid=False,
-                               title=dict(text="Total Incidentes Reportados", font=dict(color="#2D3748", size=11))),
-                    yaxis=dict(**EJE_Y_BASE, title=dict(text="", font=dict(color="#2D3748", size=11))),
-                    showlegend=False,
-                    height=max(420, len(df_top20) * 26)
-                )
-                st.plotly_chart(fig_vol, use_container_width=True)
-                st.markdown(
-                    "<div style='display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;'>"
-                    "<span style='color:#00A040;font-size:12px;font-weight:600;'>🟢 Verde = resolución rápida</span>"
-                    "<span style='color:#B8860B;font-size:12px;font-weight:600;'>🟡 Amarillo = tiempo medio</span>"
-                    "<span style='color:#CC6600;font-size:12px;font-weight:600;'>🟠 Naranja = resolución lenta</span>"
-                    f"<span style='color:{COLOR_FOCO};font-size:12px;font-weight:600;'>🔴 Rojo = resolución muy lenta</span>"
-                    "</div>",
-                    unsafe_allow_html=True
-                )
-
-                st.divider()
-
-                # ── Gráficas 5 y 6: Peores y mejores del top de incidentes ──
-                st.subheader("🚨 Peores vs ✅ Mejores Tiempos — dentro de las categorías más reportadas")
-                st.write("Filtrando solo las **20 categorías con más incidentes**, "
-                         "¿cuáles tardan más y cuáles se resuelven más rápido?")
-
-                df_top20_sorted_dias = df_cat.head(20)
-                col_worst, col_best = st.columns(2)
-
-                with col_worst:
-                    st.markdown(f"<span style='color:{COLOR_FOCO};font-weight:700;font-size:15px;'>🚨 Más lentas</span>", unsafe_allow_html=True)
-                    df_w = df_top20_sorted_dias.nlargest(10, 'promedio').sort_values('promedio', ascending=True)
-                    colores_w = [COLOR_NEUTRO] * len(df_w)
-                    colores_w[-1] = COLOR_FOCO
-                    fig_w = go.Figure(go.Bar(
-                        x=df_w['promedio'], y=df_w[complaint_col], orientation='h',
-                        marker_color=colores_w, opacity=0.9,
-                        customdata=df_w[['total_incidentes', 'mediana']].values,
-                        hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Incidentes: %{customdata[0]:,}<br>Mediana: %{customdata[1]:.1f}d<extra></extra>"
-                    ))
-                    fig_w.update_layout(
-                        plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(0,0,0,0.08)",
-                                   title=dict(text="Días Promedio", font=dict(color="#2D3748", size=11))),
-                        yaxis=dict(**EJE_Y_BASE), showlegend=False, height=380
-                    )
-                    st.plotly_chart(fig_w, use_container_width=True)
-
-                with col_best:
-                    st.markdown("<span style='color:#00803A;font-weight:700;font-size:15px;'>✅ Más rápidas</span>", unsafe_allow_html=True)
-                    df_b2 = df_top20_sorted_dias.nsmallest(10, 'promedio').sort_values('promedio', ascending=False)
-                    colores_b2 = ["#00C853"] * len(df_b2)
-                    colores_b2[0] = "#69F0AE"
-                    fig_b2 = go.Figure(go.Bar(
-                        x=df_b2['promedio'], y=df_b2[complaint_col], orientation='h',
-                        marker_color=colores_b2, opacity=0.9,
-                        customdata=df_b2[['total_incidentes', 'mediana']].values,
-                        hovertemplate="<b>%{y}</b><br>Promedio: %{x:.1f}d<br>Incidentes: %{customdata[0]:,}<br>Mediana: %{customdata[1]:.1f}d<extra></extra>"
-                    ))
-                    fig_b2.update_layout(
-                        plot_bgcolor=COLOR_FONDO_LIGERO, paper_bgcolor=COLOR_FONDO_LIGERO,
-                        xaxis=dict(**EJE_X_BASE, showgrid=True, gridcolor="rgba(0,0,0,0.08)",
-                                   title=dict(text="Días Promedio", font=dict(color="#2D3748", size=11))),
-                        yaxis=dict(**EJE_Y_BASE), showlegend=False, height=380
-                    )
-                    st.plotly_chart(fig_b2, use_container_width=True)
-
-                st.divider()
-
-                # ── Tabla resumen completa ───────────────────────────────────
-                st.subheader("📋 Tabla Completa: Categorías con Volumen y Tiempos de Resolución")
-                df_tabla = df_cat.copy()
-                df_tabla.columns = [
-                    'Categoría', 'Total Incidentes', 'Prom. Días',
-                    'Mediana Días', 'Mejor (días)', 'Peor (días)', 'Casos Resueltos'
-                ]
-                df_tabla['Prom. Días']    = df_tabla['Prom. Días'].round(1)
-                df_tabla['Mediana Días']  = df_tabla['Mediana Días'].round(1)
-                df_tabla['Mejor (días)']  = df_tabla['Mejor (días)'].round(1)
-                df_tabla['Peor (días)']   = df_tabla['Peor (días)'].round(0).astype(int)
-                st.dataframe(df_tabla, use_container_width=True, height=400)
-
-            st.divider()
