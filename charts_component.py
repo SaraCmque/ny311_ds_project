@@ -479,6 +479,8 @@ def render_dynamic_charts(df: pd.DataFrame):
                         "<div style='padding:8px 12px;background:rgba(0,0,0,0.04);"
                         "border-left:3px solid #718096;border-radius:4px;margin-top:4px;'>"
                         "<span style='color:#4A5568;font-size:12px;'>Todos los distritos visibles · "
+                        "Activa el botón para resaltar solo las zonas más críticas.</span>"
+                        "</div>",
                         unsafe_allow_html=True
                     )
 
