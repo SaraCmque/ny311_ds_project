@@ -81,19 +81,27 @@ def render_dynamic_charts(df: pd.DataFrame):
             fig.update_layout(
                 showlegend=False,
                 plot_bgcolor=COLOR_FONDO_LIGERO,
-                paper_bgcolor=COLOR_FONDO_LIGERO,
-                xaxis=dict(
-                    **EJE_X_BASE,
-                    showgrid=False,
-                    title=dict(text="Número de Reportes", font=dict(color="#000000", size=12, family="Arial")),
-                    tickfont=dict(color="#000000", size=11)
-                ),
-                yaxis=dict(
-                    **EJE_Y_BASE,
-                    categoryorder='total ascending',
-                    title=dict(text="Tipo de Incidente", font=dict(color="#000000", size=12, family="Arial")),
-                    tickfont=dict(color="#000000", size=11)
-                )
+                paper_bgcolor=COLOR_FONDO_LIGERO
+            )
+            fig.update_xaxes(
+                showline=True,
+                linewidth=1.2,
+                linecolor="rgba(160, 174, 192, 0.4)",
+                ticks="outside",
+                showgrid=False,
+                title_text="Número de Reportes",
+                title_font=dict(color="#000000", size=12, family="Arial"),
+                tickfont=dict(color="#000000", size=11)
+            )
+            fig.update_yaxes(
+                showline=True,
+                linewidth=1.2,
+                linecolor="rgba(160, 174, 192, 0.4)",
+                ticks="outside",
+                categoryorder='total ascending',
+                title_text="Tipo de Incidente",
+                title_font=dict(color="#000000", size=12, family="Arial"),
+                tickfont=dict(color="#000000", size=11)
             )
             st.plotly_chart(fig, use_container_width=True)
 
