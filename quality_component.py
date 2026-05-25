@@ -148,7 +148,7 @@ def _render_bronze(df_bronze: pd.DataFrame):
 
     cols_show = [c for c in ["columna","tipo_dato","nulos_n","nulos_pct","unicos_n","outliers_n"] if c in df_bronze.columns]
     st.subheader("📋 Resumen de Columnas")
-    st.dataframe(df_bronze[cols_show].style.background_gradient(subset=["nulos_pct"], cmap="Reds"), use_container_width=True)
+    st.dataframe(df_bronze[cols_show], use_container_width=True)
 
     st.divider()
 
@@ -197,7 +197,7 @@ def _render_silver(df_silver: pd.DataFrame, df_bronze):
 
     cols_show = [c for c in ["columna","tipo_dato","nulos_n","nulos_pct","unicos_n"] if c in df_silver.columns]
     st.subheader("📋 Resumen de Columnas")
-    st.dataframe(df_silver[cols_show].style.background_gradient(subset=["nulos_pct"], cmap="Blues"), use_container_width=True)
+    st.dataframe(df_silver[cols_show], use_container_width=True)
 
     st.divider()
 
@@ -273,7 +273,7 @@ def _render_gold(df_gold: pd.DataFrame):
 
     if num_cols:
         st.subheader("📈 Estadísticas Descriptivas — Campos Numéricos")
-        st.dataframe(df_gold[num_cols].describe().T.style.background_gradient(cmap="YlOrBr"), use_container_width=True)
+        st.dataframe(df_gold[num_cols].describe().T, use_container_width=True)
 
     st.divider()
 
