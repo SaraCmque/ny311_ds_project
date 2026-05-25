@@ -5,504 +5,1031 @@ import plotly.express as px
 import plotly.graph_objects as go
 from s3_utils import load_from_s3
 
-# ─────────────────────────────────────────────
-# PALETA DE COLORES POR CAPA
-# ─────────────────────────────────────────────
-C_BRONZE  = "#CD7F32"
-C_SILVER  = "#718096"
-C_GOLD    = "#DAA520"
-C_GOOD    = "#1E4D2B"
-C_BAD     = "#C0292B"
+# ═══════════════════════════════════════════════════════════════
+# DESIGN SYSTEM — LIGHT THEME
+# ═══════════════════════════════════════════════════════════════
+
+# Colores principales por capa
+C_BRONZE       = "#B5651D"
+C_BRONZE_LIGHT = "#FFF3E0"
+C_BRONZE_MID   = "#FFCC80"
+
+C_SILVER       = "#546E7A"
+C_SILVER_LIGHT = "#ECEFF1"
+C_SILVER_MID   = "#B0BEC5"
+
+C_GOLD         = "#F9A825"
+C_GOLD_LIGHT   = "#FFFDE7"
+C_GOLD_MID     = "#FFE082"
+
+C_SUCCESS = "#2E7D32"
+C_DANGER  = "#C62828"
+C_WARNING = "#E65100"
+C_INFO    = "#1565C0"
+C_BG      = "#FAFAFA"
+C_BORDER  = "#E0E0E0"
+C_TEXT    = "#212121"
+C_MUTED   = "#757575"
+
+FONT = "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+
+# ──────────────────────────────────────────────
+# CSS GLOBAL
+# ──────────────────────────────────────────────
+def _inject_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* Fondo general */
+    .stApp { background-color: #F5F7FA; }
+
+    /* ── Page Header ── */
+    .qc-page-header {
+        background: linear-gradient(135deg, #1A237E 0%, #283593 50%, #3949AB 100%);
+        border-radius: 16px;
+        padding: 36px 40px 28px;
+        margin-bottom: 28px;
+        color: white;
+    }
+    .qc-page-header h1 {
+        font-family: Inter, sans-serif;
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0 0 8px;
+        letter-spacing: -0.5px;
+    }
+    .qc-page-header p {
+        font-family: Inter, sans-serif;
+        font-size: 0.95rem;
+        opacity: 0.85;
+        margin: 0;
+        line-height: 1.6;
+    }
+
+    /* ── Layer badge ── */
+    .layer-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 16px;
+        border-radius: 24px;
+        font-family: Inter, sans-serif;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .layer-bronze { background:#FFF3E0; color:#BF360C; border:1.5px solid #FFCC80; }
+    .layer-silver { background:#ECEFF1; color:#37474F; border:1.5px solid #B0BEC5; }
+    .layer-gold   { background:#FFFDE7; color:#E65100; border:1.5px solid #FFE082; }
+
+    /* ── Section title ── */
+    .section-title {
+        font-family: Inter, sans-serif;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1A237E;
+        margin: 24px 0 4px;
+        padding-bottom: 6px;
+        border-bottom: 2px solid #E8EAF6;
+    }
+    .section-sub {
+        font-family: Inter, sans-serif;
+        font-size: 0.82rem;
+        color: #757575;
+        margin-bottom: 16px;
+    }
+
+    /* ── KPI cards ── */
+    .kpi-row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+    .kpi-card {
+        flex:1; min-width:140px;
+        background:white;
+        border-radius:12px;
+        padding:18px 20px 14px;
+        border:1px solid #E0E0E0;
+        box-shadow:0 1px 4px rgba(0,0,0,.06);
+        text-align:center;
+    }
+    .kpi-card .kpi-label {
+        font-family:Inter,sans-serif; font-size:0.72rem;
+        font-weight:600; text-transform:uppercase;
+        letter-spacing:.6px; color:#9E9E9E; margin-bottom:6px;
+    }
+    .kpi-card .kpi-value {
+        font-family:Inter,sans-serif; font-size:1.65rem;
+        font-weight:700; color:#1A237E; line-height:1;
+    }
+    .kpi-card .kpi-delta {
+        font-family:Inter,sans-serif; font-size:0.76rem;
+        font-weight:500; margin-top:4px;
+    }
+    .kpi-pos { color:#2E7D32; } .kpi-neg { color:#C62828; } .kpi-neu { color:#757575; }
+
+    /* ── Insight callout ── */
+    .insight {
+        background:white; border-left:4px solid #3949AB;
+        border-radius:0 10px 10px 0; padding:12px 16px;
+        margin:12px 0 20px; font-family:Inter,sans-serif;
+        font-size:0.85rem; color:#37474F; line-height:1.6;
+        box-shadow:0 1px 3px rgba(0,0,0,.07);
+    }
+    .insight strong { color:#1A237E; }
+
+    /* ── Progress bar table ── */
+    .prog-table { width:100%; border-collapse:collapse; font-family:Inter,sans-serif; font-size:0.83rem; }
+    .prog-table th { background:#F5F7FA; color:#546E7A; padding:8px 12px;
+                     text-align:left; font-weight:600; border-bottom:2px solid #E0E0E0; }
+    .prog-table td { padding:7px 12px; border-bottom:1px solid #F0F0F0; vertical-align:middle; }
+    .prog-table tr:hover { background:#F9F9FB; }
+    .prog-bar-wrap { width:120px; background:#F0F0F0; border-radius:6px; height:8px; display:inline-block; }
+    .prog-bar-fill { height:8px; border-radius:6px; }
+    .chip { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.72rem; font-weight:600; }
+    .chip-ok  { background:#E8F5E9; color:#2E7D32; }
+    .chip-warn{ background:#FFF8E1; color:#E65100; }
+    .chip-bad { background:#FFEBEE; color:#C62828; }
+
+    /* ── Comparison pills ── */
+    .pill-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+    .pill {
+        display:inline-flex; align-items:center; gap:6px;
+        background:white; border:1.5px solid #E0E0E0;
+        border-radius:20px; padding:5px 14px;
+        font-family:Inter,sans-serif; font-size:0.8rem; font-weight:500; color:#37474F;
+    }
+    .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+
+    /* ── Chart card wrapper ── */
+    .chart-card {
+        background:white; border-radius:14px;
+        padding:20px; border:1px solid #E0E0E0;
+        box-shadow:0 2px 8px rgba(0,0,0,.05);
+        margin-bottom:20px;
+    }
+    .chart-title {
+        font-family:Inter,sans-serif; font-size:0.9rem;
+        font-weight:600; color:#1A237E; margin-bottom:2px;
+    }
+    .chart-desc {
+        font-family:Inter,sans-serif; font-size:0.78rem;
+        color:#9E9E9E; margin-bottom:14px;
+    }
+
+    /* ── Overall score ring row ── */
+    .score-row { display:flex; gap:16px; margin-bottom:28px; flex-wrap:wrap; }
+    .score-card {
+        flex:1; min-width:180px; background:white;
+        border-radius:14px; padding:20px 16px;
+        border:1px solid #E0E0E0;
+        box-shadow:0 2px 8px rgba(0,0,0,.05);
+        text-align:center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════
+# HELPERS — CALIDAD Y MÉTRICAS
+# ═══════════════════════════════════════════════════════════════
+
 def quality_score(df_meta: pd.DataFrame) -> float:
     if "nulos_pct" not in df_meta.columns:
         return 0.0
     return max(0.0, 100.0 - df_meta["nulos_pct"].mean())
 
 
-def _bar_nullity(df_meta: pd.DataFrame, color_scale: str, title: str):
-    df_s = df_meta.sort_values("nulos_pct", ascending=True)
-    h = max(300, len(df_s) * 28)
-    fig = px.bar(
-        df_s, x="nulos_pct", y="columna", orientation="h",
-        color="nulos_pct", color_continuous_scale=color_scale,
-        labels={"nulos_pct": "% Nulos", "columna": "Campo"},
-        title=title, height=h,
+def _score_color(score: float):
+    if score >= 85:
+        return C_SUCCESS, "#E8F5E9"
+    if score >= 60:
+        return C_WARNING, "#FFF8E1"
+    return C_DANGER, "#FFEBEE"
+
+
+def _null_chip(pct: float) -> str:
+    if pct == 0:
+        return '<span class="chip chip-ok">Sin nulos</span>'
+    if pct < 10:
+        return f'<span class="chip chip-warn">{pct:.1f}%</span>'
+    return f'<span class="chip chip-bad">{pct:.1f}%</span>'
+
+
+def _null_bar_html(pct: float, layer_color: str) -> str:
+    fill = min(pct, 100)
+    return (
+        f'<div class="prog-bar-wrap">'
+        f'<div class="prog-bar-fill" style="width:{fill}%;background:{layer_color};"></div>'
+        f'</div>'
     )
-    fig.update_layout(
-        plot_bgcolor="white", margin=dict(l=160),
-        yaxis={"categoryorder": "total ascending"},
-        coloraxis_colorbar=dict(title="% Nulos"),
-    )
+
+
+# ───────────────────────────── CHART FACTORIES ──────────────────────────────
+
+_LAYOUT_BASE = dict(
+    font=dict(family=FONT, size=12, color=C_TEXT),
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+    margin=dict(t=48, b=40, l=16, r=16),
+    hoverlabel=dict(bgcolor="white", font_size=12, font_family=FONT),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
+    title=dict(font=dict(size=14, color=C_TEXT, family=FONT), x=0),
+    xaxis=dict(gridcolor="#F0F0F0", linecolor=C_BORDER, tickfont=dict(size=11)),
+    yaxis=dict(gridcolor="#F0F0F0", linecolor=C_BORDER, tickfont=dict(size=11)),
+)
+
+
+def _apply_base(fig: go.Figure, **extra) -> go.Figure:
+    kw = {**_LAYOUT_BASE, **extra}
+    fig.update_layout(**kw)
     return fig
 
 
-def _pie_dtype(df_meta: pd.DataFrame, title: str):
-    counts = df_meta["tipo_dato"].value_counts().reset_index()
-    counts.columns = ["tipo_dato", "cantidad"]
-    fig = px.pie(
-        counts, values="cantidad", names="tipo_dato", hole=0.45,
-        title=title, color_discrete_sequence=px.colors.qualitative.Set2,
-    )
-    fig.update_traces(textinfo="percent+label")
-    return fig
-
-
-def _gauge_quality(score: float, title: str, bar_color: str):
+def _gauge(score: float, label: str, color: str, bg: str) -> go.Figure:
+    ink, _ = _score_color(score)
     fig = go.Figure(go.Indicator(
-        mode="gauge+number",
+        mode="gauge+number+delta",
         value=score,
-        title={"text": title, "font": {"size": 15}},
-        number={"suffix": "%", "font": {"size": 28}},
+        delta={"reference": 80, "increasing": {"color": C_SUCCESS}, "decreasing": {"color": C_DANGER},
+               "font": {"size": 13}},
+        title={"text": label, "font": {"size": 13, "color": C_MUTED, "family": FONT}},
+        number={"suffix": "%", "font": {"size": 32, "color": ink, "family": FONT}},
         gauge={
-            "axis": {"range": [0, 100], "tickwidth": 1},
-            "bar": {"color": bar_color},
+            "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": C_BORDER,
+                     "tickfont": {"size": 10, "color": C_MUTED}},
+            "bar": {"color": ink, "thickness": 0.28},
+            "bgcolor": bg,
+            "borderwidth": 0,
             "steps": [
-                {"range": [0,   50], "color": "#FED7D7"},
-                {"range": [50,  80], "color": "#FEFCBF"},
-                {"range": [80, 100], "color": "#C6F6D5"},
+                {"range": [0,  50], "color": "#FFEBEE"},
+                {"range": [50, 80], "color": "#FFF8E1"},
+                {"range": [80,100], "color": "#E8F5E9"},
             ],
-            "threshold": {"line": {"color": C_BAD, "width": 3}, "thickness": 0.75, "value": 80},
+            "threshold": {
+                "line": {"color": C_INFO, "width": 2},
+                "thickness": 0.65, "value": 80,
+            },
         },
     ))
-    fig.update_layout(height=250, margin=dict(t=40, b=20, l=20, r=20))
+    fig.update_layout(height=230, paper_bgcolor="white",
+                      margin=dict(t=30, b=10, l=20, r=20),
+                      font=dict(family=FONT))
     return fig
 
 
-def _corr_heatmap(df_data: pd.DataFrame, title: str):
+def _nullity_hbar(df_meta: pd.DataFrame, layer_color: str, bg_color: str, title: str) -> go.Figure:
+    df_s = df_meta.sort_values("nulos_pct", ascending=True)
+    h    = max(340, len(df_s) * 26)
+
+    # Color por severidad
+    def _col(v):
+        if v == 0:   return C_SUCCESS
+        if v < 10:   return C_WARNING
+        if v < 30:   return "#EF6C00"
+        return C_DANGER
+
+    colors = [_col(v) for v in df_s["nulos_pct"]]
+
+    fig = go.Figure(go.Bar(
+        x=df_s["nulos_pct"], y=df_s["columna"],
+        orientation="h",
+        marker=dict(color=colors, line=dict(width=0)),
+        text=[f"{v:.1f}%" for v in df_s["nulos_pct"]],
+        textposition="outside",
+        textfont=dict(size=10, family=FONT),
+        hovertemplate="<b>%{y}</b><br>Nulidad: %{x:.2f}%<extra></extra>",
+    ))
+    # Línea de referencia al 10%
+    fig.add_vline(x=10, line_dash="dot", line_color=C_WARNING, line_width=1.5,
+                  annotation_text="10% umbral", annotation_font=dict(size=9, color=C_WARNING))
+
+    _apply_base(fig,
+        title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
+        height=h,
+        paper_bgcolor=bg_color,
+        plot_bgcolor=bg_color,
+        margin=dict(l=170, r=60, t=50, b=30),
+        yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10), gridcolor="#F0F0F0"),
+        xaxis=dict(title="% Nulos", range=[0, max(df_s["nulos_pct"].max() * 1.2, 12)],
+                   gridcolor="#EEEEEE", tickfont=dict(size=10)),
+    )
+    return fig
+
+
+def _donut_dtype(df_meta: pd.DataFrame, layer_color: str, bg: str, title: str) -> go.Figure:
+    counts = df_meta["tipo_dato"].value_counts().reset_index()
+    counts.columns = ["tipo_dato", "cantidad"]
+    palette = [layer_color, "#78909C", "#AED6F1", "#A9DFBF", "#F9E79F", "#FADBD8"]
+    fig = go.Figure(go.Pie(
+        labels=counts["tipo_dato"], values=counts["cantidad"],
+        hole=0.55,
+        marker=dict(colors=palette[:len(counts)], line=dict(color="white", width=2)),
+        textinfo="percent+label",
+        textfont=dict(size=11, family=FONT),
+        hovertemplate="<b>%{label}</b><br>%{value} campos (%{percent})<extra></extra>",
+    ))
+    _apply_base(fig,
+        title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
+        height=260,
+        paper_bgcolor=bg,
+        plot_bgcolor=bg,
+        showlegend=True,
+        legend=dict(orientation="v", x=1.0, y=0.5, font=dict(size=10)),
+        margin=dict(t=50, b=20, l=10, r=10),
+    )
+    return fig
+
+
+def _outlier_funnel(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go.Figure | None:
+    if "outliers_n" not in df_meta.columns:
+        return None
+    df_o = df_meta[df_meta["outliers_n"] > 0].sort_values("outliers_n", ascending=False)
+    if df_o.empty:
+        return None
+    fig = go.Figure(go.Bar(
+        x=df_o["columna"], y=df_o["outliers_n"],
+        marker=dict(
+            color=df_o["outliers_n"],
+            colorscale=[[0, C_GOLD_MID], [0.5, C_WARNING], [1, C_DANGER]],
+            showscale=True,
+            colorbar=dict(title="N° Outliers", thickness=12),
+        ),
+        text=df_o["outliers_n"],
+        textposition="outside",
+        textfont=dict(size=10),
+        hovertemplate="<b>%{x}</b><br>Outliers: %{y:,}<extra></extra>",
+    ))
+    _apply_base(fig,
+        title="Outliers detectados por campo",
+        height=300,
+        paper_bgcolor=bg, plot_bgcolor=bg,
+        xaxis=dict(tickangle=-30, tickfont=dict(size=9)),
+        yaxis=dict(title="N° Outliers"),
+        margin=dict(t=50, b=70, l=40, r=40),
+    )
+    return fig
+
+
+def _cardinality_bar(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go.Figure:
+    df_s = df_meta.sort_values("unicos_n", ascending=False)
+    total = df_meta["total_filas_dataset"].iloc[0] if "total_filas_dataset" in df_meta.columns else None
+    pct   = (df_s["unicos_n"] / total * 100).round(1) if total else None
+
+    fig = go.Figure(go.Bar(
+        x=df_s["columna"], y=df_s["unicos_n"],
+        marker=dict(color=layer_color, opacity=0.85, line=dict(width=0)),
+        text=[f"{v:,}" for v in df_s["unicos_n"]],
+        textposition="outside",
+        textfont=dict(size=9),
+        hovertemplate="<b>%{x}</b><br>Valores únicos: %{y:,}<extra></extra>",
+    ))
+    _apply_base(fig,
+        title="Cardinalidad por campo (valores únicos)",
+        height=300,
+        paper_bgcolor=bg, plot_bgcolor=bg,
+        xaxis=dict(tickangle=-30, tickfont=dict(size=9)),
+        yaxis=dict(title="Valores únicos"),
+        margin=dict(t=50, b=80, l=40, r=20),
+    )
+    return fig
+
+
+def _corr_heatmap(df_data: pd.DataFrame, title: str, bg: str = "white") -> go.Figure | None:
     numeric = df_data.select_dtypes(include=[np.number])
     if numeric.shape[1] < 2:
         return None
-    if numeric.shape[1] > 25:
-        numeric = numeric.iloc[:, :25]
+    if numeric.shape[1] > 22:
+        numeric = numeric.iloc[:, :22]
     corr = numeric.corr()
+    n    = len(corr.columns)
+    size = max(440, n * 52)
+
+    # Mask upper triangle to keep clean
+    mask  = np.triu(np.ones_like(corr.values, dtype=bool), k=1)
+    zvals = corr.values.copy()
+    zvals[mask] = None
+
     fig = go.Figure(go.Heatmap(
-        z=corr.values,
+        z=zvals,
         x=corr.columns.tolist(),
         y=corr.columns.tolist(),
-        colorscale="RdBu", zmid=0, zmin=-1, zmax=1,
-        colorbar=dict(title="Corr"),
-        text=np.round(corr.values, 2),
+        colorscale=[
+            [0.0,  "#C62828"], [0.25, "#EF9A9A"],
+            [0.45, "#FAFAFA"], [0.55, "#FAFAFA"],
+            [0.75, "#90CAF9"], [1.0,  "#1565C0"],
+        ],
+        zmid=0, zmin=-1, zmax=1,
+        colorbar=dict(title="r", thickness=14, len=0.8,
+                      tickfont=dict(size=10), titlefont=dict(size=11)),
+        text=np.where(mask, "", np.round(corr.values, 2)).tolist(),
         texttemplate="%{text}",
+        textfont=dict(size=9),
         hoverongaps=False,
+        hovertemplate="<b>%{x}</b> × <b>%{y}</b><br>r = %{z:.3f}<extra></extra>",
     ))
-    n = len(corr.columns)
-    size = max(450, n * 55)
     fig.update_layout(
-        title=title, height=size, width=size,
-        xaxis=dict(tickangle=-45, tickfont=dict(size=10)),
-        yaxis=dict(tickfont=dict(size=10)),
-        margin=dict(l=120, b=120),
+        title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
+        height=size, width=size,
+        paper_bgcolor=bg, plot_bgcolor=bg,
+        font=dict(family=FONT, size=11),
+        xaxis=dict(tickangle=-45, tickfont=dict(size=9), side="bottom"),
+        yaxis=dict(tickfont=dict(size=9), autorange="reversed"),
+        margin=dict(l=130, b=130, t=60, r=60),
     )
     return fig
 
 
-def _outlier_bar(df_meta: pd.DataFrame, title: str):
-    if "outliers_n" not in df_meta.columns:
+def _nullity_treemap(df_meta: pd.DataFrame, layer_color: str, title: str) -> go.Figure | None:
+    if "nulos_pct" not in df_meta.columns or "unicos_n" not in df_meta.columns:
         return None
-    df_out = df_meta[df_meta["outliers_n"] > 0]
-    if df_out.empty:
+    df = df_meta[["columna", "nulos_pct", "unicos_n"]].copy()
+    df["completitud"] = (100 - df["nulos_pct"]).clip(0, 100)
+    df["label"] = df["columna"] + "<br>" + df["completitud"].round(1).astype(str) + "% completo"
+    fig = px.treemap(
+        df, path=["columna"], values="unicos_n",
+        color="completitud",
+        color_continuous_scale=[[0, C_DANGER], [0.5, C_WARNING], [1, C_SUCCESS]],
+        range_color=[0, 100],
+        hover_data={"nulos_pct": ":.1f"},
+        labels={"completitud": "% Completo", "nulos_pct": "% Nulos"},
+        title=title,
+    )
+    fig.update_traces(
+        texttemplate="<b>%{label}</b><br>%{value:,} únicos",
+        textfont=dict(size=11, family=FONT),
+    )
+    fig.update_layout(
+        height=360, paper_bgcolor="white",
+        margin=dict(t=50, b=10, l=10, r=10),
+        font=dict(family=FONT),
+        coloraxis_colorbar=dict(title="% Completo", thickness=12),
+    )
+    return fig
+
+
+def _completeness_radar(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.Figure | None:
+    """Radar de completitud (1 - nulos_pct) para campos comunes."""
+    common = sorted(set(df_bronze["columna"]) & set(df_silver["columna"]))
+    if len(common) < 3:
         return None
-    fig = px.bar(
-        df_out.sort_values("outliers_n", ascending=False),
-        x="columna", y="outliers_n",
-        color="outliers_n", color_continuous_scale="Oranges",
-        title=title, labels={"outliers_n": "Outliers", "columna": "Campo"},
+    # Limitar a 16 campos para legibilidad
+    common = common[:16]
+
+    def _completeness(df, cols):
+        sub = df[df["columna"].isin(cols)].set_index("columna")["nulos_pct"].reindex(cols).fillna(0)
+        return (100 - sub).clip(0, 100).tolist()
+
+    b_vals = _completeness(df_bronze, common)
+    s_vals = _completeness(df_silver, common)
+
+    fig = go.Figure()
+    for vals, name, color, fill in [
+        (b_vals, "Bronze", C_BRONZE, "rgba(181,101,29,.18)"),
+        (s_vals, "Silver", C_SILVER, "rgba(84,110,122,.20)"),
+    ]:
+        theta = common + [common[0]]
+        r     = vals + [vals[0]]
+        fig.add_trace(go.Scatterpolar(
+            r=r, theta=theta, mode="lines+markers",
+            fill="toself", fillcolor=fill,
+            line=dict(color=color, width=2.5),
+            marker=dict(size=5),
+            name=name,
+        ))
+    fig.update_layout(
+        polar=dict(
+            bgcolor="#FAFAFA",
+            radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(size=9),
+                             gridcolor="#E0E0E0", linecolor="#BDBDBD"),
+            angularaxis=dict(tickfont=dict(size=9.5, family=FONT), gridcolor="#E8E8E8"),
+        ),
+        title=dict(text="Completitud por campo — Bronze vs Silver",
+                   font=dict(size=13, color=C_TEXT, family=FONT), x=0),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.15, font=dict(size=11)),
+        paper_bgcolor="white", margin=dict(t=60, b=60, l=30, r=30),
+        height=420, font=dict(family=FONT),
     )
-    fig.update_layout(plot_bgcolor="white", xaxis_tickangle=-30)
     return fig
 
 
-def _uniques_bar(df_meta: pd.DataFrame, title: str, bar_color: str):
-    fig = px.bar(
-        df_meta.sort_values("unicos_n", ascending=False),
-        x="columna", y="unicos_n",
-        color_discrete_sequence=[bar_color],
-        title=title, labels={"unicos_n": "Valores únicos", "columna": "Campo"},
+def _improvement_waterfall(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.Figure | None:
+    common = sorted(set(df_bronze["columna"]) & set(df_silver["columna"]))
+    if not common:
+        return None
+    b = df_bronze[df_bronze["columna"].isin(common)][["columna","nulos_pct"]].rename(columns={"nulos_pct":"b"})
+    s = df_silver[df_silver["columna"].isin(common)][["columna","nulos_pct"]].rename(columns={"nulos_pct":"s"})
+    m = b.merge(s, on="columna")
+    m["delta"] = m["b"] - m["s"]
+    m = m.sort_values("delta", ascending=False).head(18)
+
+    colors = [C_SUCCESS if v > 0 else (C_MUTED if v == 0 else C_DANGER) for v in m["delta"]]
+    fig = go.Figure(go.Bar(
+        x=m["columna"], y=m["delta"],
+        marker=dict(color=colors, line=dict(width=0)),
+        text=[f"{v:+.1f}%" for v in m["delta"]],
+        textposition="outside",
+        textfont=dict(size=9.5),
+        hovertemplate="<b>%{x}</b><br>Mejora: %{y:+.2f}%<extra></extra>",
+    ))
+    fig.add_hline(y=0, line_dash="solid", line_color=C_BORDER, line_width=1)
+    _apply_base(fig,
+        title="Reducción de Nulidad por Campo (Bronze → Silver)",
+        height=320,
+        xaxis=dict(tickangle=-35, tickfont=dict(size=9)),
+        yaxis=dict(title="Δ Nulidad (pp)", zeroline=True, zerolinecolor=C_BORDER),
+        margin=dict(t=55, b=80, l=50, r=20),
     )
-    fig.update_layout(plot_bgcolor="white", xaxis_tickangle=-30)
     return fig
 
 
-# ─────────────────────────────────────────────
+def _null_scatter_b_vs_s(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.Figure | None:
+    common = sorted(set(df_bronze["columna"]) & set(df_silver["columna"]))
+    if len(common) < 2:
+        return None
+    b = df_bronze[df_bronze["columna"].isin(common)][["columna","nulos_pct"]].rename(columns={"nulos_pct":"Bronze"})
+    s = df_silver[df_silver["columna"].isin(common)][["columna","nulos_pct"]].rename(columns={"nulos_pct":"Silver"})
+    df = b.merge(s, on="columna")
+    df["mejora"] = df["Bronze"] - df["Silver"]
+
+    fig = px.scatter(
+        df, x="Bronze", y="Silver", text="columna",
+        color="mejora",
+        color_continuous_scale=[[0, C_DANGER], [0.5, "#BDBDBD"], [1, C_SUCCESS]],
+        size=df["mejora"].abs().clip(lower=1) + 2,
+        labels={"Bronze": "Nulidad en Bronze (%)", "Silver": "Nulidad en Silver (%)"},
+        title="Bronze vs Silver: Nulidad por campo (scatter)",
+        hover_data={"mejora": ":.2f"},
+    )
+    mx = max(df["Bronze"].max(), df["Silver"].max()) * 1.1
+    fig.add_trace(go.Scatter(
+        x=[0, mx], y=[0, mx], mode="lines", name="Sin cambio",
+        line=dict(dash="dot", color=C_MUTED, width=1.5),
+    ))
+    fig.update_traces(textposition="top center", textfont=dict(size=8), selector=dict(mode="markers+text"))
+    _apply_base(fig,
+        height=420,
+        coloraxis_colorbar=dict(title="Mejora (pp)", thickness=12),
+        margin=dict(t=55, b=40, l=60, r=60),
+    )
+    return fig
+
+
+# ═══════════════════════════════════════════════════════════════
+# HELPERS HTML
+# ═══════════════════════════════════════════════════════════════
+
+def _kpi_card(label: str, value: str, delta: str = "", delta_type: str = "neu") -> str:
+    delta_html = f'<div class="kpi-delta kpi-{delta_type}">{delta}</div>' if delta else ""
+    return f"""
+    <div class="kpi-card">
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-value">{value}</div>
+        {delta_html}
+    </div>"""
+
+
+def _kpi_row(*cards: str) -> str:
+    return '<div class="kpi-row">' + "".join(cards) + "</div>"
+
+
+def _chart_wrap(title: str, desc: str, content_fn):
+    st.markdown(
+        f'<div class="chart-card"><div class="chart-title">{title}</div>'
+        f'<div class="chart-desc">{desc}</div></div>',
+        unsafe_allow_html=True,
+    )
+    content_fn()
+
+
+def _nullity_html_table(df_meta: pd.DataFrame, layer_color: str) -> str:
+    cols = [c for c in ["columna","tipo_dato","nulos_pct","unicos_n","outliers_n"] if c in df_meta.columns]
+    rows = ""
+    for _, r in df_meta[cols].sort_values("nulos_pct", ascending=False).iterrows():
+        pct   = r.get("nulos_pct", 0)
+        bar   = _null_bar_html(pct, layer_color)
+        chip  = _null_chip(pct)
+        uniq  = f"{int(r['unicos_n']):,}" if "unicos_n" in r.index else "—"
+        out   = f"{int(r['outliers_n']):,}" if "outliers_n" in r.index and not pd.isna(r.get("outliers_n")) else "—"
+        dtype = r.get("tipo_dato", "—")
+        rows += (
+            f"<tr><td><b>{r['columna']}</b></td><td>{dtype}</td>"
+            f"<td>{bar}&nbsp;{chip}</td><td>{uniq}</td><td>{out}</td></tr>"
+        )
+    headers = "<tr><th>Campo</th><th>Tipo</th><th>Nulidad</th><th>Únicos</th><th>Outliers</th></tr>"
+    return f'<table class="prog-table">{headers}{rows}</table>'
+
+
+def _section(title: str, sub: str = ""):
+    sub_html = f'<div class="section-sub">{sub}</div>' if sub else ""
+    st.markdown(f'<div class="section-title">{title}</div>{sub_html}', unsafe_allow_html=True)
+
+
+def _insight(text: str):
+    st.markdown(f'<div class="insight">{text}</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════
 # SECCIÓN BRONZE
-# ─────────────────────────────────────────────
-def _render_bronze(df_bronze: pd.DataFrame):
-    st.markdown(f"## 🟤 Capa Bronze — CSV Original")
+# ═══════════════════════════════════════════════════════════════
 
-    total_f = df_bronze["total_filas_dataset"].iloc[0]
-    total_d = df_bronze["duplicados_dataset"].iloc[0]
-    score   = quality_score(df_bronze)
+def _render_bronze(df: pd.DataFrame):
+    st.markdown('<span class="layer-badge layer-bronze">🟤 Capa Bronze</span>', unsafe_allow_html=True)
+    st.markdown("### CSV Original — Estado crudo de los datos")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Registros",    f"{total_f:,}")
-    c2.metric("Duplicados",          f"{total_d:,}",  delta_color="inverse")
-    c3.metric("Campos en el schema", f"{len(df_bronze):,}")
-    c4.metric("Score de Calidad",    f"{score:.1f}%")
+    total_f = df["total_filas_dataset"].iloc[0]
+    total_d = df["duplicados_dataset"].iloc[0]
+    score   = quality_score(df)
+    ink, _  = _score_color(score)
+    null_avg = df["nulos_pct"].mean() if "nulos_pct" in df.columns else 0
 
-    st.divider()
+    st.markdown(_kpi_row(
+        _kpi_card("Total registros",    f"{total_f:,}"),
+        _kpi_card("Duplicados",          f"{total_d:,}", "⚠ Presentes", "neg"),
+        _kpi_card("Campos en schema",    f"{len(df):,}"),
+        _kpi_card("Nulidad promedio",    f"{null_avg:.1f}%", "—", "neu"),
+        _kpi_card("Score calidad",       f"{score:.1f}%", "Ref: meta ≥ 80%", "pos" if score >= 80 else "neg"),
+    ), unsafe_allow_html=True)
 
-    cols_show = [c for c in ["columna","tipo_dato","nulos_n","nulos_pct","unicos_n","outliers_n"] if c in df_bronze.columns]
-    st.subheader("📋 Resumen de Columnas")
-    st.dataframe(df_bronze[cols_show], use_container_width=True)
+    _insight(
+        f"El dataset Bronze contiene <strong>{total_f:,} registros</strong> con "
+        f"<strong>{total_d:,} duplicados</strong>. La nulidad promedio es de "
+        f"<strong>{null_avg:.1f}%</strong> — los campos con mayor nulidad requieren "
+        f"limpieza en la capa Silver."
+    )
 
-    st.divider()
+    # Gauge + Donut
+    c1, c2 = st.columns(2)
+    with c1:
+        _section("Score de Calidad", "Ref: 80% = umbral aceptable (línea azul)")
+        st.plotly_chart(_gauge(score, "Bronze", C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
+    with c2:
+        _section("Tipos de Dato", "Composición del schema por tipo")
+        st.plotly_chart(_donut_dtype(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
 
-    g1, g2 = st.columns(2)
-    with g1:
-        st.plotly_chart(_gauge_quality(score, "Score Calidad Bronze", C_BRONZE), use_container_width=True)
-    with g2:
-        st.plotly_chart(_pie_dtype(df_bronze, "Distribución de Tipos de Dato"), use_container_width=True)
+    # Nulidad horizontal
+    _section("Nulidad por Campo", "Campos ordenados de menor a mayor nulidad. Umbral recomendado: 10% (línea naranja).")
+    st.plotly_chart(_nullity_hbar(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
 
-    st.divider()
-    st.subheader("📊 % de Nulidad por Campo")
-    st.plotly_chart(_bar_nullity(df_bronze, "Reds", "Nulidad por Campo — Bronze"), use_container_width=True)
+    # Treemap completitud
+    _section("Mapa de Completitud", "Área ∝ cardinalidad; color = % completitud (verde = completo, rojo = nulo).")
+    fig_tree = _nullity_treemap(df, C_BRONZE, "Completitud y cardinalidad — Bronze")
+    if fig_tree:
+        st.plotly_chart(fig_tree, use_container_width=True)
 
-    st.divider()
-    o1, o2 = st.columns(2)
-    with o1:
-        fig_out = _outlier_bar(df_bronze, "Campos con Outliers — Bronze")
+    # Outliers + Cardinalidad
+    c3, c4 = st.columns(2)
+    with c3:
+        _section("Outliers", "Campos con anomalías detectadas (IQR).")
+        fig_out = _outlier_funnel(df, C_BRONZE, C_BRONZE_LIGHT)
         if fig_out:
             st.plotly_chart(fig_out, use_container_width=True)
         else:
-            st.info("No se detectaron outliers en Bronze.")
-    with o2:
-        st.plotly_chart(_uniques_bar(df_bronze, "Cardinalidad por Campo — Bronze", C_BRONZE), use_container_width=True)
+            st.success("✅ No se detectaron outliers en Bronze.")
+    with c4:
+        _section("Cardinalidad", "Valores únicos por campo.")
+        st.plotly_chart(_cardinality_bar(df, C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
+
+    # Tabla detalle
+    _section("Detalle por Campo")
+    st.markdown(_nullity_html_table(df, C_BRONZE), unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
 # SECCIÓN SILVER
-# ─────────────────────────────────────────────
-def _render_silver(df_silver: pd.DataFrame, df_bronze):
-    st.markdown("## 🔘 Capa Silver — Parquet Limpio")
+# ═══════════════════════════════════════════════════════════════
 
-    total_s = df_silver["total_filas_dataset"].iloc[0]
-    score_s = quality_score(df_silver)
+def _render_silver(df: pd.DataFrame, df_bronze):
+    st.markdown('<span class="layer-badge layer-silver">🔘 Capa Silver</span>', unsafe_allow_html=True)
+    st.markdown("### Parquet Limpio — Tras deduplicación y normalización")
 
-    sc1, sc2, sc3, sc4 = st.columns(4)
-    sc1.metric("Registros Únicos",   f"{total_s:,}")
-    sc2.metric("Duplicados",          "0",  delta="Eliminados ✔", delta_color="normal")
-    sc3.metric("Campos en el schema", f"{len(df_silver):,}")
-    sc4.metric("Score de Calidad",    f"{score_s:.1f}%")
+    total_s  = df["total_filas_dataset"].iloc[0]
+    score_s  = quality_score(df)
+    null_avg = df["nulos_pct"].mean() if "nulos_pct" in df.columns else 0
+    ink, _   = _score_color(score_s)
 
+    reduction = ""
+    delta_lbl = ""
     if df_bronze is not None:
-        total_f = df_bronze["total_filas_dataset"].iloc[0]
-        st.caption(f"ℹ️ Reducción del {((total_f - total_s)/total_f)*100:.1f}% del volumen respecto a Bronze.")
+        total_f   = df_bronze["total_filas_dataset"].iloc[0]
+        reduction = f"{((total_f - total_s)/total_f)*100:.1f}%"
+        delta_lbl = f"▼ {reduction} respecto a Bronze"
 
-    st.divider()
+    st.markdown(_kpi_row(
+        _kpi_card("Registros únicos",   f"{total_s:,}", delta_lbl, "pos"),
+        _kpi_card("Duplicados",          "0", "✅ Eliminados", "pos"),
+        _kpi_card("Campos en schema",    f"{len(df):,}"),
+        _kpi_card("Nulidad promedio",    f"{null_avg:.1f}%"),
+        _kpi_card("Score calidad",       f"{score_s:.1f}%", "Ref: meta ≥ 80%", "pos" if score_s >= 80 else "neg"),
+    ), unsafe_allow_html=True)
 
-    cols_show = [c for c in ["columna","tipo_dato","nulos_n","nulos_pct","unicos_n"] if c in df_silver.columns]
-    st.subheader("📋 Resumen de Columnas")
-    st.dataframe(df_silver[cols_show], use_container_width=True)
+    _insight(
+        f"Tras la limpieza Silver se retuvieron <strong>{total_s:,} registros únicos</strong> "
+        f"(reducción de <strong>{reduction}</strong>). Los duplicados son <strong>0</strong>. "
+        f"La nulidad promedio bajó a <strong>{null_avg:.1f}%</strong>."
+    )
 
-    st.divider()
+    c1, c2 = st.columns(2)
+    with c1:
+        _section("Score de Calidad", "Ref: 80% = umbral aceptable")
+        st.plotly_chart(_gauge(score_s, "Silver", C_SILVER, C_SILVER_LIGHT), use_container_width=True)
+    with c2:
+        _section("Tipos de Dato")
+        st.plotly_chart(_donut_dtype(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
 
-    g1, g2 = st.columns(2)
-    with g1:
-        st.plotly_chart(_gauge_quality(score_s, "Score Calidad Silver", C_SILVER), use_container_width=True)
-    with g2:
-        st.plotly_chart(_pie_dtype(df_silver, "Distribución de Tipos de Dato"), use_container_width=True)
+    _section("Nulidad por Campo", "Umbral recomendado: 10% (línea naranja).")
+    st.plotly_chart(_nullity_hbar(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
 
-    st.divider()
-    st.subheader("📊 % de Nulidad por Campo")
-    st.plotly_chart(_bar_nullity(df_silver, "Blues", "Nulidad por Campo — Silver"), use_container_width=True)
+    _section("Mapa de Completitud", "Área ∝ cardinalidad; color = % completitud.")
+    fig_tree = _nullity_treemap(df, C_SILVER, "Completitud y cardinalidad — Silver")
+    if fig_tree:
+        st.plotly_chart(fig_tree, use_container_width=True)
 
-    st.divider()
-    st.plotly_chart(_uniques_bar(df_silver, "Cardinalidad por Campo — Silver", C_SILVER), use_container_width=True)
+    _section("Cardinalidad")
+    st.plotly_chart(_cardinality_bar(df, C_SILVER, C_SILVER_LIGHT), use_container_width=True)
+
+    _section("Detalle por Campo")
+    st.markdown(_nullity_html_table(df, C_SILVER), unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
 # SECCIÓN GOLD
-# ─────────────────────────────────────────────
-def _render_gold(df_gold: pd.DataFrame):
-    st.markdown("## 🥇 Capa Gold — Feature Enrichment")
+# ═══════════════════════════════════════════════════════════════
 
-    total_g  = len(df_gold)
-    num_cols = df_gold.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = df_gold.select_dtypes(exclude=[np.number]).columns.tolist()
-    null_pct = df_gold.isnull().mean().mean() * 100
+def _render_gold(df: pd.DataFrame):
+    st.markdown('<span class="layer-badge layer-gold">🥇 Capa Gold</span>', unsafe_allow_html=True)
+    st.markdown("### Feature-Enriched — Dataset listo para análisis y modelos")
 
-    g1, g2, g3, g4 = st.columns(4)
-    g1.metric("Registros",          f"{total_g:,}")
-    g2.metric("Campos Numéricos",    f"{len(num_cols):,}")
-    g3.metric("Campos Categóricos",  f"{len(cat_cols):,}")
-    g4.metric("Nulidad Promedio",    f"{null_pct:.2f}%")
+    total_g  = len(df)
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    null_pct = df.isnull().mean().mean() * 100
+    score_g  = max(0.0, 100.0 - null_pct)
 
-    st.divider()
+    st.markdown(_kpi_row(
+        _kpi_card("Registros",         f"{total_g:,}"),
+        _kpi_card("Campos numéricos",  f"{len(num_cols):,}"),
+        _kpi_card("Campos categóricos",f"{len(cat_cols):,}"),
+        _kpi_card("Nulidad promedio",  f"{null_pct:.2f}%"),
+        _kpi_card("Score calidad",     f"{score_g:.1f}%", "Meta ≥ 80%", "pos" if score_g >= 80 else "neg"),
+    ), unsafe_allow_html=True)
 
-    # Nulidad real sobre datos Gold
-    st.subheader("📊 Nulidad por Campo — Gold")
-    nulls = df_gold.isnull().mean().reset_index()
+    _insight(
+        f"La capa Gold cuenta con <strong>{total_g:,} registros</strong>, "
+        f"<strong>{len(num_cols)} campos numéricos</strong> y "
+        f"<strong>{len(cat_cols)} categóricos</strong>. "
+        f"Nulidad global de <strong>{null_pct:.2f}%</strong>."
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        _section("Score de Calidad", "Ref: 80% = umbral aceptable")
+        st.plotly_chart(_gauge(score_g, "Gold", C_GOLD, C_GOLD_LIGHT), use_container_width=True)
+    with c2:
+        _section("Tipos de Dato")
+        dtype_df = pd.DataFrame({"tipo_dato": df.dtypes.astype(str)}).reset_index()
+        dtype_df.columns = ["columna", "tipo_dato"]
+        st.plotly_chart(_donut_dtype(dtype_df, C_GOLD, C_GOLD_LIGHT, ""), use_container_width=True)
+
+    # Nulidad campos
+    nulls = df.isnull().mean().reset_index()
     nulls.columns = ["columna", "nulos_pct"]
     nulls["nulos_pct"] = (nulls["nulos_pct"] * 100).round(2)
-    nulls_s = nulls.sort_values("nulos_pct", ascending=True)
-    h = max(300, len(nulls_s) * 20)
-    fig_n = px.bar(
-        nulls_s, x="nulos_pct", y="columna", orientation="h",
-        color="nulos_pct", color_continuous_scale="YlOrBr",
-        height=h, title="% Nulos — Gold",
-        labels={"nulos_pct": "% Nulos", "columna": "Campo"},
-    )
-    fig_n.update_layout(plot_bgcolor="white", margin=dict(l=220), yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(fig_n, use_container_width=True)
-
-    st.divider()
-
-    # Tipos de dato + gauge
-    dtype_df = pd.DataFrame({"tipo": df_gold.dtypes.astype(str)}).reset_index()
-    dtype_df.columns = ["columna", "tipo"]
-    cnt = dtype_df["tipo"].value_counts().reset_index()
-    cnt.columns = ["tipo", "cantidad"]
-    fig_dt = px.pie(cnt, values="cantidad", names="tipo", hole=0.45,
-                    title="Distribución de Tipos de Dato — Gold",
-                    color_discrete_sequence=px.colors.qualitative.Pastel)
-    fig_dt.update_traces(textinfo="percent+label")
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.plotly_chart(fig_dt, use_container_width=True)
-    with col_b:
-        score_g = max(0.0, 100.0 - null_pct)
-        st.plotly_chart(_gauge_quality(score_g, "Score Calidad Gold", C_GOLD), use_container_width=True)
-
-    st.divider()
+    if "total_filas_dataset" not in nulls.columns:
+        nulls["total_filas_dataset"] = total_g
+    _section("Nulidad por Campo (datos reales)", "Cada barra = % de filas nulas para ese campo.")
+    st.plotly_chart(_nullity_hbar(nulls, C_GOLD, C_GOLD_LIGHT, ""), use_container_width=True)
 
     if num_cols:
-        st.subheader("📈 Estadísticas Descriptivas — Campos Numéricos")
-        st.dataframe(df_gold[num_cols].describe().T, use_container_width=True)
+        _section("Estadísticas Descriptivas — Campos Numéricos")
+        st.dataframe(df[num_cols].describe().T.round(3), use_container_width=True)
 
-    st.divider()
-
-    st.subheader("🔗 Matriz de Correlación — Gold")
-    fig_corr = _corr_heatmap(df_gold, "Correlación entre Variables Numéricas — Gold")
+    _section("Matriz de Correlación — Campos Numéricos", "Solo triángulo inferior. Rojo = correlación negativa, Azul = positiva.")
+    fig_corr = _corr_heatmap(df, "Correlación — Gold", C_GOLD_LIGHT)
     if fig_corr:
         st.plotly_chart(fig_corr, use_container_width=True)
     else:
-        st.info("No hay suficientes columnas numéricas para calcular correlación en Gold.")
+        st.info("No hay suficientes columnas numéricas para correlación.")
 
 
-# ─────────────────────────────────────────────
-# CORRELACIONES METADATA Bronze / Silver
-# ─────────────────────────────────────────────
-def _render_corr_metadata(df_bronze, df_silver):
-    st.markdown("### 🔗 Correlación de Métricas de Calidad por Campo")
-    st.caption("Muestra cómo se relacionan las métricas de calidad (nulos, cardinalidad, outliers) dentro de cada capa.")
-    numeric_meta_cols = ["nulos_n", "nulos_pct", "unicos_n", "outliers_n"]
+# ═══════════════════════════════════════════════════════════════
+# SECCIÓN COMPARATIVA Bronze ↔ Silver
+# ═══════════════════════════════════════════════════════════════
 
-    tab_b, tab_s = st.tabs(["🟤 Bronze", "🔘 Silver"])
+def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
+    st.markdown("### ⚖️ Bronze ↔ Silver — Evolución de la Calidad")
 
-    with tab_b:
-        if df_bronze is not None:
-            avail = [c for c in numeric_meta_cols if c in df_bronze.columns]
-            if len(avail) >= 2:
-                fig = _corr_heatmap(df_bronze[avail], "Correlación de Métricas de Calidad — Bronze")
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Columnas numéricas insuficientes en metadata Bronze.")
-        else:
-            st.warning("Metadata Bronze no disponible.")
+    bronze_cols = set(df_bronze["columna"])
+    silver_cols = set(df_silver["columna"])
+    common      = sorted(bronze_cols & silver_cols)
+    score_b     = quality_score(df_bronze)
+    score_s     = quality_score(df_silver)
+    delta_score = score_s - score_b
 
-    with tab_s:
-        if df_silver is not None:
-            avail = [c for c in numeric_meta_cols if c in df_silver.columns]
-            if len(avail) >= 2:
-                fig = _corr_heatmap(df_silver[avail], "Correlación de Métricas de Calidad — Silver")
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Columnas numéricas insuficientes en metadata Silver.")
-        else:
-            st.warning("Metadata Silver no disponible.")
+    st.markdown(_kpi_row(
+        _kpi_card("Score Bronze",    f"{score_b:.1f}%"),
+        _kpi_card("Score Silver",    f"{score_s:.1f}%", f"+{delta_score:.1f}pp", "pos"),
+        _kpi_card("Campos comunes",  f"{len(common)}"),
+        _kpi_card("Solo en Bronze",  f"{len(bronze_cols - silver_cols)}"),
+        _kpi_card("Solo en Silver",  f"{len(silver_cols - bronze_cols)}"),
+    ), unsafe_allow_html=True)
 
-
-# ─────────────────────────────────────────────
-# CORRELACIÓN INTERACTIVA GOLD (datos reales)
-# ─────────────────────────────────────────────
-def _render_real_corr(df_gold: pd.DataFrame):
-    st.subheader("🔗 Correlación en Datos Reales — Gold")
-    num_cols = df_gold.select_dtypes(include=[np.number]).columns.tolist()
-    if len(num_cols) < 2:
-        st.info("No hay suficientes columnas numéricas en Gold.")
-        return
-
-    selected = st.multiselect(
-        "Selecciona campos para la matriz de correlación (mín. 2):",
-        options=num_cols,
-        default=num_cols[:min(12, len(num_cols))],
-        key="corr_gold_select",
+    _insight(
+        f"El score de calidad mejoró <strong>+{delta_score:.1f} puntos porcentuales</strong> de Bronze a Silver. "
+        f"Existen <strong>{len(common)} campos comunes</strong> comparables entre ambas capas."
     )
 
-    if len(selected) < 2:
-        st.warning("Selecciona al menos 2 campos.")
-        return
+    # Radar de completitud
+    _section("Radar de Completitud por Campo", "Muestra qué tan completo (sin nulos) está cada campo en cada capa.")
+    fig_radar = _completeness_radar(df_bronze, df_silver)
+    if fig_radar:
+        st.plotly_chart(fig_radar, use_container_width=True)
 
-    fig = _corr_heatmap(df_gold[selected], "Matriz de Correlación — Campos Seleccionados (Gold)")
-    if fig:
-        st.plotly_chart(fig, use_container_width=True)
-    st.caption("💡 Valores > 0.7 (azul) = correlación positiva fuerte; < -0.7 (rojo) = negativa fuerte.")
+    # Waterfall mejora
+    _section("Reducción de Nulidad por Campo (Bronze → Silver)", "Verde = mejoró, rojo = empeoró. Top 18 campos.")
+    fig_wf = _improvement_waterfall(df_bronze, df_silver)
+    if fig_wf:
+        st.plotly_chart(fig_wf, use_container_width=True)
 
+    # Scatter nulidad
+    _section("Scatter de Nulidad: Bronze (X) vs Silver (Y)",
+             "Puntos bajo la diagonal = mejoraron. Tamaño ∝ mejora absoluta.")
+    fig_sc = _null_scatter_b_vs_s(df_bronze, df_silver)
+    if fig_sc:
+        st.plotly_chart(fig_sc, use_container_width=True)
 
-# ─────────────────────────────────────────────
-# COMPARATIVA INTERACTIVA Bronze vs Silver
-# ─────────────────────────────────────────────
-def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
-    st.markdown("## ⚖️ Comparativa Interactiva: Bronze vs Silver")
-    st.caption("Selecciona campos y métricas para ver cómo mejoró la calidad tras la limpieza Silver.")
+    # Selector interactivo
+    st.markdown("---")
+    _section("Comparativa Interactiva por Métrica")
 
-    bronze_cols = set(df_bronze["columna"].tolist())
-    silver_cols = set(df_silver["columna"].tolist())
-    common_cols = sorted(bronze_cols & silver_cols)
-
-    score_b = quality_score(df_bronze)
-    score_s = quality_score(df_silver)
-
-    sb1, sb2, sb3 = st.columns(3)
-    sb1.metric("Score Bronze",   f"{score_b:.1f}%")
-    sb2.metric("Score Silver",   f"{score_s:.1f}%", delta=f"+{score_s - score_b:.1f}%", delta_color="normal")
-    sb3.metric("Campos comunes", f"{len(common_cols)}")
-
-    st.divider()
-
-    metric_options = {
-        "% Nulidad (nulos_pct)":     "nulos_pct",
-        "N° Nulos (nulos_n)":        "nulos_n",
-        "Valores Únicos (unicos_n)": "unicos_n",
-    }
+    metric_options = {"% Nulidad": "nulos_pct", "N° Nulos": "nulos_n", "Cardinalidad": "unicos_n"}
     if "outliers_n" in df_bronze.columns:
-        metric_options["N° Outliers (outliers_n)"] = "outliers_n"
+        metric_options["N° Outliers"] = "outliers_n"
 
-    col_ctrl1, col_ctrl2 = st.columns([1, 2])
-    with col_ctrl1:
-        metric_label = st.selectbox("Métrica a comparar:", list(metric_options.keys()))
-        metric       = metric_options[metric_label]
-        chart_type   = st.radio("Tipo de gráfica:", ["Barras agrupadas", "Barras apiladas", "Scatter"], horizontal=True)
-    with col_ctrl2:
-        selected_cols = st.multiselect(
-            "Filtrar campos (vacío = todos los comunes):",
-            options=common_cols, default=[],
-        )
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        m_label   = st.selectbox("Métrica:", list(metric_options.keys()), key="comp_metric")
+        metric    = metric_options[m_label]
+        chart_typ = st.radio("Tipo:", ["Barras agrupadas", "Barras apiladas", "Scatter"], horizontal=True, key="comp_type")
+    with col2:
+        sel_cols = st.multiselect("Filtrar campos (vacío = todos):", common, default=[], key="comp_cols")
 
-    use_cols = selected_cols if selected_cols else common_cols
+    use_cols  = sel_cols if sel_cols else common
     color_map = {"Bronze": C_BRONZE, "Silver": C_SILVER}
 
-    df_b_filt = df_bronze[df_bronze["columna"].isin(use_cols)][["columna", metric]].copy()
-    df_b_filt["capa"] = "Bronze"
-    df_s_filt = df_silver[df_silver["columna"].isin(use_cols)][["columna", metric]].copy()
-    df_s_filt["capa"] = "Silver"
-    df_comp = pd.concat([df_b_filt, df_s_filt], ignore_index=True).dropna(subset=[metric])
+    df_b2 = df_bronze[df_bronze["columna"].isin(use_cols)][["columna", metric]].copy()
+    df_b2["capa"] = "Bronze"
+    df_s2 = df_silver[df_silver["columna"].isin(use_cols)][["columna", metric]].copy()
+    df_s2["capa"] = "Silver"
+    df_comp = pd.concat([df_b2, df_s2]).dropna(subset=[metric])
 
-    if chart_type == "Barras agrupadas":
+    if chart_typ == "Barras agrupadas":
         fig = px.bar(df_comp, x="columna", y=metric, color="capa", barmode="group",
                      color_discrete_map=color_map,
-                     title=f"{metric_label} — Bronze vs Silver",
-                     labels={"columna": "Campo", metric: metric_label, "capa": "Capa"})
-    elif chart_type == "Barras apiladas":
+                     labels={"columna": "Campo", metric: m_label, "capa": "Capa"})
+    elif chart_typ == "Barras apiladas":
         fig = px.bar(df_comp, x="columna", y=metric, color="capa", barmode="stack",
                      color_discrete_map=color_map,
-                     title=f"{metric_label} — Bronze vs Silver (apilado)",
-                     labels={"columna": "Campo", metric: metric_label, "capa": "Capa"})
+                     labels={"columna": "Campo", metric: m_label, "capa": "Capa"})
     else:
-        df_pivot = df_comp.pivot(index="columna", columns="capa", values=metric).reset_index().dropna()
-        if "Bronze" in df_pivot.columns and "Silver" in df_pivot.columns:
-            fig = px.scatter(df_pivot, x="Bronze", y="Silver", text="columna",
-                             title=f"{metric_label}: Bronze (X) vs Silver (Y)",
-                             labels={"Bronze": f"Bronze — {metric_label}", "Silver": f"Silver — {metric_label}"},
+        df_piv = df_comp.pivot(index="columna", columns="capa", values=metric).reset_index().dropna()
+        if "Bronze" in df_piv and "Silver" in df_piv:
+            fig = px.scatter(df_piv, x="Bronze", y="Silver", text="columna",
                              color_discrete_sequence=[C_BRONZE])
-            max_val = max(df_pivot["Bronze"].max(), df_pivot["Silver"].max())
-            fig.add_trace(go.Scatter(x=[0, max_val], y=[0, max_val], mode="lines",
-                                     name="Sin cambio", line=dict(dash="dash", color=C_BAD)))
-            fig.update_traces(textposition="top center", selector=dict(mode="markers+text"))
+            mx = max(df_piv["Bronze"].max(), df_piv["Silver"].max()) * 1.1
+            fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", name="Sin cambio",
+                                     line=dict(dash="dot", color=C_MUTED, width=1.5)))
         else:
             fig = go.Figure()
-            fig.add_annotation(text="No hay campos comunes suficientes.", xref="paper", yref="paper", x=0.5, y=0.5)
 
-    fig.update_layout(plot_bgcolor="white", xaxis_tickangle=-40)
+    _apply_base(fig, xaxis=dict(tickangle=-35, tickfont=dict(size=9)), margin=dict(t=40, b=70, l=40, r=20))
     st.plotly_chart(fig, use_container_width=True)
 
-    st.divider()
-
-    # Top campos con mayor mejora de nulidad
-    st.subheader("🏆 Campos con Mayor Mejora (reducción de nulos)")
+    # Scoreboard table
+    _section("Scoreboard por Campo")
     if "nulos_pct" in df_bronze.columns and "nulos_pct" in df_silver.columns:
-        df_b_n = df_bronze[df_bronze["columna"].isin(common_cols)][["columna", "nulos_pct"]].rename(columns={"nulos_pct": "bronze_pct"})
-        df_s_n = df_silver[df_silver["columna"].isin(common_cols)][["columna", "nulos_pct"]].rename(columns={"nulos_pct": "silver_pct"})
-        df_mej = df_b_n.merge(df_s_n, on="columna")
-        df_mej["mejora"] = df_mej["bronze_pct"] - df_mej["silver_pct"]
-        df_mej = df_mej.sort_values("mejora", ascending=False).head(20)
-
-        fig_mej = go.Figure()
-        fig_mej.add_trace(go.Bar(x=df_mej["columna"], y=df_mej["bronze_pct"],
-                                  name="Bronze", marker_color=C_BRONZE, opacity=0.85))
-        fig_mej.add_trace(go.Bar(x=df_mej["columna"], y=df_mej["silver_pct"],
-                                  name="Silver", marker_color=C_SILVER, opacity=0.9))
-        fig_mej.update_layout(
-            barmode="group", plot_bgcolor="white",
-            title="Top 20 Campos: Nulidad Bronze vs Silver",
-            xaxis_tickangle=-35, yaxis_title="% Nulos",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        )
-        st.plotly_chart(fig_mej, use_container_width=True)
-
-    st.divider()
-
-    # Scoreboard
-    st.subheader("📊 Scoreboard Completo por Campo")
-    if "nulos_pct" in df_bronze.columns and "nulos_pct" in df_silver.columns:
-        sb_b = df_bronze[["columna", "nulos_pct", "unicos_n"]].add_suffix("_b").rename(columns={"columna_b": "columna"})
-        sb_s = df_silver[["columna", "nulos_pct", "unicos_n"]].add_suffix("_s").rename(columns={"columna_s": "columna"})
+        sb_b = df_bronze[["columna","nulos_pct","unicos_n"]].add_suffix("_b").rename(columns={"columna_b":"columna"})
+        sb_s = df_silver[["columna","nulos_pct","unicos_n"]].add_suffix("_s").rename(columns={"columna_s":"columna"})
         sb   = sb_b.merge(sb_s, on="columna", how="inner")
         sb["Δ nulos_pct"] = (sb["nulos_pct_s"] - sb["nulos_pct_b"]).round(2)
-        sb["estado"] = sb["Δ nulos_pct"].apply(lambda x: "✅ Mejoró" if x < 0 else ("➡️ Igual" if x == 0 else "⚠️ Empeoró"))
-        sb = sb.rename(columns={
-            "nulos_pct_b": "Nulos% Bronze", "nulos_pct_s": "Nulos% Silver",
-            "unicos_n_b": "Únicos Bronze",  "unicos_n_s": "Únicos Silver",
-        })
+        sb["Estado"] = sb["Δ nulos_pct"].apply(lambda x: "✅ Mejoró" if x < 0 else ("➡️ Igual" if x == 0 else "⚠️ Empeoró"))
+        sb = sb.rename(columns={"nulos_pct_b": "Nulos% Bronze", "nulos_pct_s": "Nulos% Silver",
+                                  "unicos_n_b": "Únicos Bronze",  "unicos_n_s": "Únicos Silver"})
         st.dataframe(
-            sb[["columna", "Nulos% Bronze", "Nulos% Silver", "Δ nulos_pct", "Únicos Bronze", "Únicos Silver", "estado"]]
+            sb[["columna","Nulos% Bronze","Nulos% Silver","Δ nulos_pct","Únicos Bronze","Únicos Silver","Estado"]]
             .sort_values("Δ nulos_pct"),
             use_container_width=True,
         )
 
 
-# ─────────────────────────────────────────────
-# PUNTO DE ENTRADA PRINCIPAL
-# ─────────────────────────────────────────────
-def render_quality_section():
-    """Renderiza el tab completo de Control de Calidad — Arquitectura Medallion."""
+# ═══════════════════════════════════════════════════════════════
+# SECCIÓN CORRELACIONES
+# ═══════════════════════════════════════════════════════════════
 
-    with st.spinner("Cargando reportes de calidad…"):
+def _render_correlaciones(df_bronze, df_silver, df_gold):
+    st.markdown("### 🔗 Matrices de Correlación por Capa")
+    _insight(
+        "Para <strong>Bronze y Silver</strong> se correlacionan las <em>métricas de calidad</em> "
+        "(nulos, cardinalidad, outliers) de cada campo. "
+        "Para <strong>Gold</strong> se correlacionan las variables numéricas reales del dataset enriquecido."
+    )
+
+    meta_cols = ["nulos_n", "nulos_pct", "unicos_n", "outliers_n"]
+
+    tab_b, tab_s, tab_g = st.tabs(["🟤 Bronze", "🔘 Silver", "🥇 Gold"])
+
+    with tab_b:
+        _section("Correlación de Métricas de Calidad — Bronze",
+                 "¿Campos con más nulos tienden a tener más outliers?")
+        if df_bronze is not None:
+            avail = [c for c in meta_cols if c in df_bronze.columns]
+            if len(avail) >= 2:
+                st.plotly_chart(_corr_heatmap(df_bronze[avail], "Correlación Métricas — Bronze", C_BRONZE_LIGHT) or go.Figure(),
+                                use_container_width=True)
+            else:
+                st.info("Columnas insuficientes.")
+
+    with tab_s:
+        _section("Correlación de Métricas de Calidad — Silver",
+                 "¿Se mantuvo la estructura de correlaciones tras la limpieza?")
+        if df_silver is not None:
+            avail = [c for c in meta_cols if c in df_silver.columns]
+            if len(avail) >= 2:
+                st.plotly_chart(_corr_heatmap(df_silver[avail], "Correlación Métricas — Silver", C_SILVER_LIGHT) or go.Figure(),
+                                use_container_width=True)
+            else:
+                st.info("Columnas insuficientes.")
+
+    with tab_g:
+        _section("Correlación de Variables Reales — Gold",
+                 "Selecciona los campos numéricos a incluir en la matriz.")
+        if df_gold is not None:
+            num_cols = df_gold.select_dtypes(include=[np.number]).columns.tolist()
+            if len(num_cols) < 2:
+                st.info("No hay suficientes columnas numéricas.")
+            else:
+                selected = st.multiselect(
+                    "Campos (mín. 2, máx. recomendado 15):",
+                    options=num_cols,
+                    default=num_cols[:min(12, len(num_cols))],
+                    key="corr_gold_sel",
+                )
+                if len(selected) >= 2:
+                    fig = _corr_heatmap(df_gold[selected], "Correlación — Campos Seleccionados (Gold)", C_GOLD_LIGHT)
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+                    st.caption("💡 Azul intenso > 0.7 = correlación positiva fuerte. Rojo intenso < -0.7 = negativa fuerte.")
+                else:
+                    st.warning("Selecciona al menos 2 campos.")
+        else:
+            st.warning("Datos Gold no disponibles.")
+
+
+# ═══════════════════════════════════════════════════════════════
+# PUNTO DE ENTRADA
+# ═══════════════════════════════════════════════════════════════
+
+def render_quality_section():
+    _inject_css()
+
+    with st.spinner("Cargando datos de calidad…"):
         df_bronze = load_from_s3("metadata/healthcheck_report/")
         df_silver = load_from_s3("metadata/healthcheck_silver_parquet/")
         df_gold   = load_from_s3("gold/enhanced_for_streamlit_eda/")
 
-    st.title("🔍 Control de Calidad — Arquitectura Medallion")
-    st.markdown(
-        "Análisis de calidad de datos en cada capa: **Bronze** (raw CSV), "
-        "**Silver** (Parquet limpio) y **Gold** (Feature-enriched). "
-        "Incluye métricas, gráficas, matrices de correlación y comparativa interactiva Bronze ↔ Silver."
-    )
+    # ── Page header ──────────────────────────
+    st.markdown("""
+    <div class="qc-page-header">
+        <h1>🔍 Control de Calidad — Arquitectura Medallion</h1>
+        <p>
+            Evidencia del estado de los datos en cada capa: <b>Bronze</b> (CSV raw) →
+            <b>Silver</b> (Parquet limpio) → <b>Gold</b> (Feature-enriched para análisis).
+            Usa las pestañas para explorar cada capa o compararlas interactivamente.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Gauges globales lado a lado
-    if df_bronze is not None or df_silver is not None or df_gold is not None:
-        k1, k2, k3 = st.columns(3)
-        with k1:
-            score_b = quality_score(df_bronze) if df_bronze is not None else 0.0
-            st.plotly_chart(_gauge_quality(score_b, "🟤 Bronze", C_BRONZE), use_container_width=True)
-        with k2:
-            score_s = quality_score(df_silver) if df_silver is not None else 0.0
-            st.plotly_chart(_gauge_quality(score_s, "🔘 Silver", C_SILVER), use_container_width=True)
-        with k3:
-            score_g = (100.0 - df_gold.isnull().mean().mean() * 100) if df_gold is not None else 0.0
-            st.plotly_chart(_gauge_quality(score_g, "🥇 Gold",   C_GOLD),   use_container_width=True)
+    # ── Score global (gauges compactos) ──────
+    score_b = quality_score(df_bronze) if df_bronze is not None else 0.0
+    score_s = quality_score(df_silver) if df_silver is not None else 0.0
+    score_g = (100.0 - df_gold.isnull().mean().mean() * 100) if df_gold is not None else 0.0
+
+    g1, g2, g3 = st.columns(3)
+    with g1:
+        st.plotly_chart(_gauge(score_b, "🟤 Bronze — Score Calidad", C_BRONZE, C_BRONZE_LIGHT),
+                        use_container_width=True)
+    with g2:
+        st.plotly_chart(_gauge(score_s, "🔘 Silver — Score Calidad", C_SILVER, C_SILVER_LIGHT),
+                        use_container_width=True)
+    with g3:
+        st.plotly_chart(_gauge(score_g, "🥇 Gold — Score Calidad", C_GOLD, C_GOLD_LIGHT),
+                        use_container_width=True)
 
     st.divider()
 
-    tab_bronze, tab_silver, tab_gold, tab_comp, tab_corr = st.tabs([
+    # ── Tabs principales ─────────────────────
+    tab_b, tab_s, tab_g, tab_comp, tab_corr = st.tabs([
         "🟤 Bronze",
         "🔘 Silver",
         "🥇 Gold",
@@ -510,40 +1037,29 @@ def render_quality_section():
         "🔗 Correlaciones",
     ])
 
-    with tab_bronze:
+    with tab_b:
         if df_bronze is not None:
             _render_bronze(df_bronze)
         else:
-            st.error("No se encontró el reporte Bronze en S3.")
+            st.error("Reporte Bronze no encontrado en S3.")
 
-    with tab_silver:
+    with tab_s:
         if df_silver is not None:
             _render_silver(df_silver, df_bronze)
         else:
-            st.error("No se encontró el reporte Silver en S3.")
+            st.error("Reporte Silver no encontrado en S3.")
 
-    with tab_gold:
+    with tab_g:
         if df_gold is not None:
             _render_gold(df_gold)
         else:
-            st.error("No se encontraron datos Gold en S3.")
+            st.error("Datos Gold no encontrados en S3.")
 
     with tab_comp:
         if df_bronze is not None and df_silver is not None:
             _render_comparison(df_bronze, df_silver)
         else:
-            st.warning("Se necesitan ambos reportes (Bronze y Silver) para la comparativa.")
+            st.warning("Se necesitan Bronze y Silver para la comparativa.")
 
     with tab_corr:
-        st.markdown("## 🔗 Matrices de Correlación por Capa")
-        st.markdown(
-            "Para **Bronze** y **Silver** se correlacionan las *métricas de calidad* de cada campo "
-            "(nulos, cardinalidad, outliers). Para **Gold** se usa la correlación real entre campos numéricos."
-        )
-        st.divider()
-        _render_corr_metadata(df_bronze, df_silver)
-        st.divider()
-        if df_gold is not None:
-            _render_real_corr(df_gold)
-        else:
-            st.warning("Datos Gold no disponibles para correlación.")
+        _render_correlaciones(df_bronze, df_silver, df_gold)
