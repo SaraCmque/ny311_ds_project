@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from s3_utils import load_from_s3
 
 def render_dynamic_charts():
-    # 1. CARGA DE DATOS (Capa Gold con SLAs Oficiales y Costos)
+    # 1. CARGA DE DATOS
     prefix_gold = "gold/enhanced_for_streamlit_eda/"
     df_raw = load_from_s3(prefix=prefix_gold)
     
@@ -14,109 +14,115 @@ def render_dynamic_charts():
         return
 
     # Paleta de Colores "Ingeniería de la Atención"
-    COLOR_FOCO = "#C0292B"   # Rojo: Peligro / Incumplimiento
-    COLOR_NEUTRO = "#718096" # Gris: Contexto
-    COLOR_DINERO = "#1E4D2B" # Verde Oscuro: Impacto Financiero
-    
-    # 2. CABECERA Y STORYTELLING
-    st.header("⚖️ Auditoría de Cumplimiento Legal y Riesgo Financiero")
-    st.markdown(f"""
-    **Pregunta de Negocio:** ¿Qué probabilidad hay de que la ciudad sea demandada por negligencia operativa?
-    
-    En este análisis, ya no usamos promedios estadísticos. Comparamos la realidad contra los tiempos de respuesta del **Mayor's Management Report 2019** 
-    y monetizamos el riesgo usando el **Annual Claims Report** de la Contraloría.
-    """)
+    COLOR_FOCO = "#C0292B"   # Rojo: Incumplimiento Crítico
+    COLOR_DINERO = "#1E4D2B" # Verde: Impacto Económico
+    COLOR_NEUTRO = "#EDF2F7" # Gris claro: Fondo / Base
 
-    # 3. KPIs FINANCIEROS Y OPERATIVOS
-    # Filtramos casos cerrados para medir cumplimiento real
+    # 2. PROCESAMIENTO DE IMPACTO INDIVIDUAL
+    # Filtramos casos cerrados para tener cálculos reales
     df_work = df_raw[df_raw['resolution_time_days'].notna()].copy()
     
-    total_casos = len(df_work)
-    casos_vencidos = df_work[df_work['is_overdue_official'] == 1].shape[0]
-    riesgo_total_usd = df_work['estimated_liability_usd'].sum()
-    tasa_incumplimiento = (casos_vencidos / total_casos) if total_casos > 0 else 0
+    # Calculamos el "Exceso de Tiempo" (Margen de Negligencia)
+    df_work['overdue_margin_days'] = df_work['resolution_time_days'] - df_work['official_sla_days']
+    # Solo nos interesan los que excedieron el límite
+    df_overdue = df_work[df_work['is_overdue_official'] == 1].copy()
 
-    k1, k2, k3 = st.columns(3)
-    k1.metric("Casos Vencidos (SLA Oficial)", f"{casos_vencidos:,}", delta="Riesgo de Negligencia")
-    k2.metric("Tasa de Incumplimiento", f"{tasa_incumplimiento:.1%}")
-    k3.metric("Riesgo de Pasivo Legal", f"${riesgo_total_usd/1e6:.1f}M USD", delta="Impacto Estimado", delta_color="inverse")
+    # 3. STORYTELLING Y KPIs
+    st.header("💰 Informe de Riesgo Financiero por Ineficiencia Operativa")
+    st.markdown("""
+    Este análisis cuantifica la **negligencia institucional**. Cada registro que excede el tiempo de respuesta oficial del 
+    **MMR 2019** se convierte en un punto de exposición legal según el **Comptroller Claims Report**.
+    """)
+
+    total_negligencias = len(df_overdue)
+    riesgo_total_usd = df_overdue['estimated_liability_usd'].sum()
+    promedio_retraso = df_overdue['overdue_margin_days'].mean()
+
+    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+    with col_kpi1:
+        st.metric("Incidentes con Negligencia Legal", f"{total_negligencias:,}", "Superaron SLA")
+    with col_kpi2:
+        st.metric("Promedio de Exceso de Tiempo", f"{promedio_retraso:.1f} días", "Sobre el límite legal")
+    with col_kpi3:
+        st.metric("Pasivo Económico Acumulado", f"${riesgo_total_usd/1e6:.1f}M USD", "Riesgo en demandas")
 
     st.divider()
 
-    # 4. EXPLICACIÓN DEL "MURO LEGAL" (HISTOGRAMA INTERACTIVO)
-    st.subheader("1. La Barrera de la Negligencia")
-    st.write("Selecciona una agencia para ver qué tan lejos de la ley (SLA) se encuentran sus respuestas actuales.")
-    
-    agencias_disponibles = sorted(df_work['Agency'].unique())
-    agencia_sel = st.selectbox("Analizar Agencia:", agencias_disponibles, index=agencias_disponibles.index('DOT') if 'DOT' in agencias_disponibles else 0)
+    # 4. GRÁFICA DE DOMINANCIA VISUAL: RANKING DE PASIVOS POR AGENCIA
+    st.subheader("1. ¿Quién está comprometiendo más presupuesto?")
+    st.write("A continuación, el cálculo final del riesgo acumulado por cada agencia. El color indica el volumen de casos vencidos.")
 
-    df_agencia = df_work[df_work['Agency'] == agencia_sel]
-    sla_oficial = df_agencia['official_sla_days'].iloc[0]
-    costo_promedio = df_agencia['avg_negligence_cost'].iloc[0]
+    # Agrupamos por Agencia para el cálculo final
+    df_agency_risk = df_overdue.groupby('Agency').agg({
+        'Unique Key': 'count',
+        'estimated_liability_usd': 'sum',
+        'overdue_margin_days': 'mean'
+    }).reset_index().rename(columns={'Unique Key': 'Casos Vencidos'})
 
-    fig_concept = px.histogram(
-        df_agencia, x="resolution_time_days", nbins=50,
-        title=f"Distribución de Tiempos: {agencia_sel}",
-        color_discrete_sequence=[COLOR_NEUTRO],
-        labels={'resolution_time_days': 'Días de Resolución'}
+    df_agency_risk = df_agency_risk.sort_values('estimated_liability_usd', ascending=True)
+
+    fig_risk = px.bar(
+        df_agency_risk, 
+        x='estimated_liability_usd', 
+        y='Agency', 
+        orientation='h',
+        color='Casos Vencidos',
+        color_continuous_scale='Reds',
+        labels={'estimated_liability_usd': 'Riesgo Total (USD)', 'Agency': 'Agencia'},
+        title="Impacto Económico Total por Incumplimiento"
     )
-    # Línea del SLA oficial del MMR 2019
-    fig_concept.add_vline(x=sla_oficial, line_dash="dash", line_color=COLOR_FOCO, line_width=3)
-    fig_concept.add_annotation(x=sla_oficial, y=0.9, yref="paper", text=f"LÍMITE LEGAL: {sla_oficial} días", showarrow=False, font_color=COLOR_FOCO)
     
-    fig_concept.update_layout(plot_bgcolor="white")
-    st.plotly_chart(fig_concept, use_container_width=True)
-    st.info(f"💰 **Análisis para {agencia_sel}:** Cada caso a la derecha de la línea roja representa un riesgo promedio de **${costo_promedio:,.0f} USD** en indemnizaciones.")
+    fig_risk.update_layout(plot_bgcolor="white", coloraxis_showscale=False)
+    st.plotly_chart(fig_risk, use_container_width=True)
+
+    # 5. ANÁLISIS DE "GRAVEDAD" (SCATTER PLOT)
+    st.subheader("2. Matriz de Severidad: Tiempo vs. Dinero")
+    st.write("Cada punto es una categoría de queja. Los que están arriba a la derecha son los más peligrosos: tardan mucho y son caros.")
+
+    df_complaint_risk = df_overdue.groupby('Complaint Type').agg({
+        'overdue_margin_days': 'mean',
+        'estimated_liability_usd': 'sum',
+        'Agency': 'first'
+    }).reset_index()
+
+    fig_scatter = px.scatter(
+        df_complaint_risk,
+        x='overdue_margin_days',
+        y='estimated_liability_usd',
+        size='estimated_liability_usd',
+        color='Agency',
+        hover_name='Complaint Type',
+        title="Categorías por Exceso de Tiempo y Pasivo Total",
+        labels={'overdue_margin_days': 'Días de Retraso Extra (Promedio)', 'estimated_liability_usd': 'Riesgo Financiero Total'},
+        height=500
+    )
+    fig_scatter.update_layout(plot_bgcolor="#F8F9FA")
+    st.plotly_chart(fig_scatter, use_container_width=True)
 
     st.divider()
 
-    # 5. ANÁLISIS DE RIESGO ECONÓMICO POR DISTRITO
-    st.subheader("2. Mapa del Riesgo Financiero (Liability)")
-    st.write("Visualizamos solo los tickets vencidos. El tamaño del punto indica el costo promedio de la demanda según la agencia.")
-
-    df_overdue = df_work[df_work['is_overdue_official'] == 1]
-    # Muestra representativa
-    df_map = df_overdue.sample(n=min(3000, len(df_overdue)))
-
+    # 6. EL MAPA DE LA NEGLIGENCIA (CONTRASTE FIGURA-FONDO)
+    st.subheader("3. Localización de los 'Puntos de Negligencia'")
+    st.write("Visualización de las quejas vencidas. La intensidad del rojo muestra dónde la ciudad está siendo 'más lenta' legalmente.")
+    
+    # Usamos opacidad baja para resaltar densidad
     fig_map = px.scatter_mapbox(
-        df_map, lat="latitude", lon="longitude", 
-        color="Agency", # Colores por agencia para ver quién domina la zona
-        size="estimated_liability_usd", # Más grande = más caro fallar ahí
-        hover_name="Complaint Type",
-        hover_data={"estimated_liability_usd": ':,.0f', "resolution_time_days": ':.1f'},
+        df_overdue.sample(n=min(5000, len(df_overdue))), 
+        lat="latitude", lon="longitude", 
+        color="overdue_margin_days", # El color ahora representa cuántos días llevan de retraso
+        size="avg_negligence_cost", # El tamaño representa el costo de la agencia
+        color_continuous_scale='OrRd',
         zoom=10, height=600,
-        mapbox_style="carto-positron"
+        mapbox_style="carto-positron",
+        title="Mapa de Calor de Retrasos Acumulados"
     )
     fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-    # 6. COMPARATIVA DE IMPACTO POR AGENCIA
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        st.subheader("3. Probabilidad de Fallo por Distrito")
-        df_boro = df_work.groupby('Borough')['is_overdue_official'].mean().reset_index()
-        df_boro = df_boro.sort_values('is_overdue_official', ascending=True)
-        fig_boro = px.bar(df_boro, x='is_overdue_official', y='Borough', orientation='h',
-                          title="Tasa de Incumplimiento Oficial",
-                          color_discrete_sequence=[COLOR_NEUTRO])
-        # Resaltar los que superan el 30%
-        fig_boro.update_traces(marker_color=[COLOR_FOCO if r > 0.3 else COLOR_NEUTRO for r in df_boro['is_overdue_official']])
-        fig_boro.update_layout(xaxis_tickformat=".0%", plot_bgcolor="white")
-        st.plotly_chart(fig_boro, use_container_width=True)
-
-    with col_b:
-        st.subheader("4. Pasivo Total en Riesgo por Agencia")
-        df_money = df_work.groupby('Agency')['estimated_liability_usd'].sum().reset_index()
-        df_money = df_money.sort_values('estimated_liability_usd', ascending=True).tail(10)
-        fig_money = px.bar(df_money, x='estimated_liability_usd', y='Agency', orientation='h',
-                           title="Riesgo Acumulado (USD)",
-                           color_discrete_sequence=[COLOR_DINERO])
-        fig_money.update_layout(plot_bgcolor="white")
-        st.plotly_chart(fig_money, use_container_width=True)
-
+    # 7. CONCLUSIÓN DE CIENCIA DE DATOS
     st.success(f"""
-    **Conclusión Estratégica:** 
-    Aunque el volumen de quejas sea alto en toda la ciudad, el riesgo financiero se concentra en la agencia **{df_money.iloc[-1]['Agency']}**, 
-    donde el incumplimiento del SLA oficial representa el mayor pasivo legal potencial.
+    **Conclusión del Riesgo:**
+    - Se identificaron **{total_negligencias:,}** incidentes que operan bajo negligencia legal.
+    - El riesgo financiero no es proporcional al número de quejas, sino a la combinación de **Agencia** y **Retraso**.
+    - El modelo predictivo debe priorizar las quejas de **{df_agency_risk.iloc[-1]['Agency']}** para mitigar un pasivo de **${df_agency_risk.iloc[-1]['estimated_liability_usd']/1e6:.1f}M USD**.
     """)
