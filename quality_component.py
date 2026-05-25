@@ -303,17 +303,25 @@ def _nullity_hbar(df_meta: pd.DataFrame, layer_color: str, bg_color: str, title:
     ))
     # Línea de referencia al 10%
     fig.add_vline(x=10, line_dash="dot", line_color=C_WARNING, line_width=1.5,
-                  annotation_text="10% umbral", annotation_font=dict(size=9, color=C_WARNING))
+                  annotation_text="10% — revisar",
+                  annotation_position="top right",
+                  annotation_font=dict(size=9, color=C_WARNING))
+    fig.add_vline(x=30, line_dash="dot", line_color=C_DANGER, line_width=1.5,
+                  annotation_text="30% — imputar o descartar",
+                  annotation_position="top right",
+                  annotation_font=dict(size=9, color=C_DANGER))
 
     _apply_base(fig,
         title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
         height=h,
         paper_bgcolor=bg_color,
         plot_bgcolor=bg_color,
-        margin=dict(l=170, r=60, t=50, b=30),
-        yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10), gridcolor="#F0F0F0"),
-        xaxis=dict(title="% Nulos", range=[0, max(df_s["nulos_pct"].max() * 1.2, 12)],
-                   gridcolor="#EEEEEE", tickfont=dict(size=10)),
+        margin=dict(l=170, r=80, t=50, b=30),
+        yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10), gridcolor="#F0F0F0",
+                   title="Campo"),
+        xaxis=dict(title="% de filas con valor nulo",
+                   range=[0, max(df_s["nulos_pct"].max() * 1.25, 35)],
+                   gridcolor="#EEEEEE", tickfont=dict(size=10), ticksuffix="%"),
     )
     return fig
 
@@ -339,29 +347,30 @@ def _schema_type_quality(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        name="Completitud (%)",
+        name="✅ Completitud prom.",
         x=grp["tipo_dato"], y=grp["completitud"],
         marker_color=layer_color,
-        text=grp["n_campos"].apply(lambda n: f"{n} col."),
+        text=grp["n_campos"].apply(lambda n: f"{n} campo{'s' if n > 1 else ''}"),
         textposition="inside",
         textfont=dict(size=9, color="white"),
-        hovertemplate="<b>%{x}</b><br>Completitud: %{y:.1f}%<br>%{text}<extra></extra>",
+        hovertemplate="<b>Tipo: %{x}</b><br>Completitud prom.: %{y:.1f}%<br>%{text}<extra></extra>",
     ))
     fig.add_trace(go.Bar(
-        name="Nulidad prom. (%)",
+        name="⚠️ Nulidad prom.",
         x=grp["tipo_dato"], y=grp["nulidad_prom"],
         marker_color=C_DANGER,
         opacity=0.75,
-        hovertemplate="<b>%{x}</b><br>Nulidad: %{y:.1f}%<extra></extra>",
+        hovertemplate="<b>Tipo: %{x}</b><br>Nulidad promedio: %{y:.1f}%<br>Riesgo de imputación por tipo<extra></extra>",
     ))
     _apply_base(fig,
         barmode="stack",
         height=270,
         paper_bgcolor=bg, plot_bgcolor=bg,
-        legend=dict(orientation="h", y=1.14, x=0, font=dict(size=10)),
-        margin=dict(t=60, b=30, l=10, r=10),
-        yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor="#EEEEEE", title="% Columnas"),
-        xaxis=dict(tickfont=dict(size=10), title="Tipo de dato"),
+        legend=dict(orientation="h", y=1.18, x=0, font=dict(size=10)),
+        margin=dict(t=70, b=40, l=10, r=10),
+        yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor="#EEEEEE",
+                   title="Completitud promedio (%)"),
+        xaxis=dict(tickfont=dict(size=10), title="Familia de tipo de dato"),
     )
     return fig
 
@@ -386,19 +395,21 @@ def _skewness_profile(df_data: pd.DataFrame, layer_color: str, bg: str) -> go.Fi
         hovertemplate="<b>%{y}</b><br>|Skewness|: %{x:.3f}<extra></extra>",
     ))
     fig.add_vline(x=1.0, line_dash="dot", line_color=C_WARNING, line_width=1.5,
-                  annotation_text="Umbral moderado (1)",
+                  annotation_text="|skew|≥1 → transformar (log/sqrt)",
                   annotation_position="bottom right",
                   annotation_font=dict(size=9, color=C_WARNING))
     fig.add_vline(x=2.0, line_dash="dot", line_color=C_DANGER, line_width=1.5,
-                  annotation_text="Umbral severo (2)",
+                  annotation_text="|skew|≥2 → transformación urgente",
                   annotation_position="top right",
                   annotation_font=dict(size=9, color=C_DANGER))
     _apply_base(fig,
         height=max(320, len(skew) * 26),
         paper_bgcolor=bg, plot_bgcolor=bg,
-        margin=dict(t=50, b=20, l=160, r=80),
-        xaxis=dict(title="|Skewness|", gridcolor="#EEEEEE"),
-        yaxis=dict(tickfont=dict(size=10), categoryorder="total ascending"),
+        margin=dict(t=50, b=20, l=160, r=120),
+        xaxis=dict(title="Asimetría absoluta |skew| — mayor = más sesgada la distribución",
+                   gridcolor="#EEEEEE"),
+        yaxis=dict(tickfont=dict(size=10), categoryorder="total ascending",
+                   title="Feature numérico"),
     )
     return fig
 
@@ -420,15 +431,15 @@ def _outlier_funnel(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go.Figu
         text=df_o["outliers_n"],
         textposition="outside",
         textfont=dict(size=10),
-        hovertemplate="<b>%{x}</b><br>Outliers: %{y:,}<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>Valores atípicos (IQR×1.5): %{y:,}<br>Evaluar si son errores o casos reales<extra></extra>",
     ))
     _apply_base(fig,
-        title="Outliers detectados por campo",
+        title="Valores atípicos por campo (método IQR × 1.5)",
         height=300,
         paper_bgcolor=bg, plot_bgcolor=bg,
-        xaxis=dict(tickangle=-30, tickfont=dict(size=9)),
-        yaxis=dict(title="N° Outliers"),
-        margin=dict(t=50, b=70, l=40, r=40),
+        xaxis=dict(tickangle=-30, tickfont=dict(size=9), title="Campo"),
+        yaxis=dict(title="Cantidad de valores atípicos"),
+        margin=dict(t=50, b=90, l=60, r=40),
     )
     return fig
 
@@ -444,15 +455,15 @@ def _cardinality_bar(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go.Fig
         text=[f"{v:,}" for v in df_s["unicos_n"]],
         textposition="outside",
         textfont=dict(size=9),
-        hovertemplate="<b>%{x}</b><br>Valores únicos: %{y:,}<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>Valores únicos: %{y:,}<br>Alta cardinalidad = posible ID o campo libre<extra></extra>",
     ))
     _apply_base(fig,
-        title="Cardinalidad por campo (valores únicos)",
+        title="Cardinalidad por campo — ¿cuántos valores distintos tiene cada columna?",
         height=300,
         paper_bgcolor=bg, plot_bgcolor=bg,
-        xaxis=dict(tickangle=-30, tickfont=dict(size=9)),
-        yaxis=dict(title="Valores únicos"),
-        margin=dict(t=50, b=80, l=40, r=20),
+        xaxis=dict(tickangle=-30, tickfont=dict(size=9), title="Campo"),
+        yaxis=dict(title="N° de valores únicos"),
+        margin=dict(t=50, b=90, l=60, r=20),
     )
     return fig
 
@@ -483,15 +494,17 @@ def _corr_heatmap(df_data: pd.DataFrame, title: str, bg: str = "white") -> go.Fi
         ],
         zmid=0, zmin=-1, zmax=1,
         colorbar=dict(
-            title=dict(text="r", font=dict(size=11)),
+            title=dict(text="Pearson r", font=dict(size=11)),
             thickness=14, len=0.8,
             tickfont=dict(size=10),
+            tickvals=[-1, -0.5, 0, 0.5, 1],
+            ticktext=["-1 (inv.)", "-0.5", "0", "+0.5", "+1 (dir.)"],
         ),
         text=np.where(mask, "", np.round(corr.values, 2)).tolist(),
         texttemplate="%{text}",
         textfont=dict(size=9),
         hoverongaps=False,
-        hovertemplate="<b>%{x}</b> × <b>%{y}</b><br>r = %{z:.3f}<extra></extra>",
+        hovertemplate="<b>%{x}</b> × <b>%{y}</b><br>r = %{z:.3f}<br>|r|>0.8 = multicolinealidad<extra></extra>",
     ))
     fig.update_layout(
         title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
@@ -521,14 +534,19 @@ def _nullity_treemap(df_meta: pd.DataFrame, layer_color: str, title: str) -> go.
         title=title,
     )
     fig.update_traces(
-        texttemplate="<b>%{label}</b><br>%{value:,} únicos",
+        texttemplate="<b>%{label}</b><br>%{value:,} únicos<br>%{color:.0f}% completo",
         textfont=dict(size=11, family=FONT),
+        hovertemplate="<b>%{label}</b><br>Valores únicos: %{value:,}<br>Completitud: %{color:.1f}%<br>Nulidad: %{customdata:.1f}%<extra></extra>",
     )
     fig.update_layout(
-        height=360, paper_bgcolor="white",
+        height=380, paper_bgcolor="white",
         margin=dict(t=50, b=10, l=10, r=10),
         font=dict(family=FONT),
-        coloraxis_colorbar=dict(title="% Completo", thickness=12),
+        coloraxis_colorbar=dict(
+            title="% Completo", thickness=12,
+            tickvals=[0, 25, 50, 75, 100],
+            ticktext=["0% (todo nulo)", "25%", "50%", "75%", "100% (sin nulos)"],
+        ),
     )
     return fig
 
@@ -566,14 +584,15 @@ def _completeness_radar(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.
         polar=dict(
             bgcolor="#FAFAFA",
             radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(size=9),
-                             gridcolor="#E0E0E0", linecolor="#BDBDBD"),
+                             ticksuffix="%", gridcolor="#E0E0E0", linecolor="#BDBDBD",
+                             title=dict(text="% completo", font=dict(size=9, color=C_MUTED))),
             angularaxis=dict(tickfont=dict(size=9.5, family=FONT), gridcolor="#E8E8E8"),
         ),
-        title=dict(text="Completitud por campo — Bronze vs Silver",
+        title=dict(text="Completitud por campo — Bronze vs Silver (100% = sin nulos)",
                    font=dict(size=13, color=C_TEXT, family=FONT), x=0),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.15, font=dict(size=11)),
-        paper_bgcolor="white", margin=dict(t=60, b=60, l=30, r=30),
-        height=420, font=dict(family=FONT),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.18, font=dict(size=11)),
+        paper_bgcolor="white", margin=dict(t=60, b=70, l=30, r=30),
+        height=440, font=dict(family=FONT),
     )
     return fig
 
@@ -595,15 +614,16 @@ def _improvement_waterfall(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> 
         text=[f"{v:+.1f}%" for v in m["delta"]],
         textposition="outside",
         textfont=dict(size=9.5),
-        hovertemplate="<b>%{x}</b><br>Mejora: %{y:+.2f}%<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>Reducción de nulidad: %{y:+.2f} pp<br>Positivo = mejoró en Silver<extra></extra>",
     ))
     fig.add_hline(y=0, line_dash="solid", line_color=C_BORDER, line_width=1)
     _apply_base(fig,
-        title="Reducción de Nulidad por Campo (Bronze → Silver)",
-        height=320,
-        xaxis=dict(tickangle=-35, tickfont=dict(size=9)),
-        yaxis=dict(title="Δ Nulidad (pp)", zeroline=True, zerolinecolor=C_BORDER),
-        margin=dict(t=55, b=80, l=50, r=20),
+        title="Reducción de nulidad por campo (Bronze → Silver) — verde mejoró, rojo empeoró",
+        height=340,
+        xaxis=dict(tickangle=-35, tickfont=dict(size=9), title="Campo"),
+        yaxis=dict(title="Reducción de nulidad (puntos porcentuales)",
+                   zeroline=True, zerolinecolor=C_BORDER),
+        margin=dict(t=55, b=90, l=70, r=20),
     )
     return fig
 
@@ -622,8 +642,9 @@ def _null_scatter_b_vs_s(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go
         color="mejora",
         color_continuous_scale=[[0, C_DANGER], [0.5, "#BDBDBD"], [1, C_SUCCESS]],
         size=df["mejora"].abs().clip(lower=1) + 2,
-        labels={"Bronze": "Nulidad en Bronze (%)", "Silver": "Nulidad en Silver (%)"},
-        title="Bronze vs Silver: Nulidad por campo (scatter)",
+        labels={"Bronze": "Nulidad en Bronze (%)", "Silver": "Nulidad en Silver (%)",
+                "mejora": "Reducción (pp)"},
+        title="¿Qué campos mejoraron? Nulidad Bronze (X) vs Silver (Y) — bajo la diagonal = mejoró",
         hover_data={"mejora": ":.2f"},
     )
     mx = max(df["Bronze"].max(), df["Silver"].max()) * 1.1
@@ -671,7 +692,7 @@ def _detail_table(df_meta: pd.DataFrame):
 
 def _render_bronze(df: pd.DataFrame):
     st.markdown("## 🟤 Capa Bronze — CSV Original")
-    st.caption("Estado crudo de los datos antes de cualquier transformación.")
+    st.caption("Datos tal como llegaron de la fuente, sin ninguna transformación. Esta capa sirve de línea base para medir cuánto mejora la calidad en Silver.")
 
     total_f  = df["total_filas_dataset"].iloc[0]
     total_d  = df["duplicados_dataset"].iloc[0]
@@ -692,39 +713,40 @@ def _render_bronze(df: pd.DataFrame):
 
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Score de Calidad")
-        st.caption("Ref: 80% = umbral aceptable (línea azul)")
+        st.subheader("Score Global de Calidad")
+        st.caption("Puntaje agregado 0–100. Ref: ≥80% es aceptable (línea azul). El delta muestra la distancia al umbral.")
         st.plotly_chart(_gauge(score, "Bronze", C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
     with c2:
-        st.subheader("Calidad por Tipo de Dato")
-        st.caption("Verde = completitud; rojo = nulidad promedio por familia. Revela qué grupos implican más riesgo de datos faltantes.")
+        st.subheader("Calidad por Familia de Tipo")
+        st.caption("¿Qué tipo de datos concentra más nulos? Ayuda a priorizar la estrategia de imputación en Silver.")
         st.plotly_chart(_schema_type_quality(df, C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
 
     st.subheader("Nulidad por Campo")
-    st.caption("Campos ordenados de menor a mayor nulidad. Umbral recomendado: 10% (línea naranja).")
+    st.caption("% de filas vacías por campo. Naranja (10%): revisar. Rojo (30%): imputar o descartar. Verde: aceptable.")
     st.plotly_chart(_nullity_hbar(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
 
-    st.subheader("Mapa de Completitud")
-    st.caption("Área proporcional a la cardinalidad; color = % completitud (verde = completo, rojo = nulo).")
+    st.subheader("Mapa de Completitud y Cardinalidad")
+    st.caption("Área = nº de valores únicos (cardinalidad). Color = completitud. Campos grandes y rojos son prioritarios: mucha diversidad pero datos faltantes.")
     fig_tree = _nullity_treemap(df, C_BRONZE, "Completitud y cardinalidad — Bronze")
     if fig_tree:
         st.plotly_chart(fig_tree, use_container_width=True)
 
     c3, c4 = st.columns(2)
     with c3:
-        st.subheader("Outliers")
-        st.caption("Campos con anomalías detectadas (IQR).")
+        st.subheader("Valores Atípicos (Outliers IQR)")
+        st.caption("Cantidad de registros fuera del rango IQR×1.5. Pueden ser errores de captura o casos extremos reales — ambos afectan modelos lineales.")
         fig_out = _outlier_funnel(df, C_BRONZE, C_BRONZE_LIGHT)
         if fig_out:
             st.plotly_chart(fig_out, use_container_width=True)
         else:
             st.success("✅ No se detectaron outliers en Bronze.")
     with c4:
-        st.subheader("Cardinalidad")
-        st.caption("Valores únicos por campo.")
+        st.subheader("Cardinalidad por Campo")
+        st.caption("Alta cardinalidad (≈ total de filas) indica probable ID — no aporta valor predictivo. Baja cardinalidad puede indicar flag o categoría.")
         st.plotly_chart(_cardinality_bar(df, C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
 
-    st.subheader("Detalle por Campo")
+    st.subheader("Ficha Completa de Calidad por Campo")
+    st.caption("Tabla detallada ordenada por nulidad descendente. Usa este ranking para decidir qué campos limpiar primero en Silver.")
     _detail_table(df)
 
 
@@ -734,7 +756,7 @@ def _render_bronze(df: pd.DataFrame):
 
 def _render_silver(df: pd.DataFrame, df_bronze):
     st.markdown("## 🔘 Capa Silver — Parquet Limpio")
-    st.caption("Tras deduplicación, normalización y limpieza de nulos críticos.")
+    st.caption("Resultado de la primera transformación: deduplicación, normalización de tipos y tratamiento de nulos críticos. Compara con Bronze para medir el impacto de la limpieza.")
 
     total_s  = df["total_filas_dataset"].iloc[0]
     score_s  = quality_score(df)
@@ -760,28 +782,30 @@ def _render_silver(df: pd.DataFrame, df_bronze):
 
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Score de Calidad")
-        st.caption("Ref: 80% = umbral aceptable")
+        st.subheader("Score Global de Calidad")
+        st.caption("¿Superamos el umbral mínimo tras la limpieza? ≥80% es la meta. El delta indica si mejoramos respecto a Bronze.")
         st.plotly_chart(_gauge(score_s, "Silver", C_SILVER, C_SILVER_LIGHT), use_container_width=True)
     with c2:
-        st.subheader("Calidad por Tipo de Dato")
-        st.caption("Compara la completitud vs. nulidad promedio por familia de tipo tras la limpieza Silver.")
+        st.subheader("Calidad por Familia de Tipo")
+        st.caption("Tras la limpieza, ¿qué familia de tipos aún acumula nulos? Si un tipo persiste en rojo, revisar la estrategia de imputación.")
         st.plotly_chart(_schema_type_quality(df, C_SILVER, C_SILVER_LIGHT), use_container_width=True)
 
-    st.subheader("Nulidad por Campo")
-    st.caption("Umbral recomendado: 10% (línea naranja).")
+    st.subheader("Nulidad por Campo — Silver")
+    st.caption("Naranja (10%): aún requiere atención. Rojo (30%): campo problemático para modelos. Comparar con Bronze para ver la mejora.")
     st.plotly_chart(_nullity_hbar(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
 
-    st.subheader("Mapa de Completitud")
-    st.caption("Área proporcional a la cardinalidad; color = % completitud.")
+    st.subheader("Mapa de Completitud y Cardinalidad")
+    st.caption("Área = cardinalidad. Color = completitud. Campos que siguen rojos en Silver son candidatos a descarte o feature engineering adicional.")
     fig_tree = _nullity_treemap(df, C_SILVER, "Completitud y cardinalidad — Silver")
     if fig_tree:
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    st.subheader("Cardinalidad")
+    st.subheader("Cardinalidad por Campo")
+    st.caption("Campos de muy alta cardinalidad en Silver podrían necesitar encoding especial (target encoding, hashing) antes del modelado.")
     st.plotly_chart(_cardinality_bar(df, C_SILVER, C_SILVER_LIGHT), use_container_width=True)
 
-    st.subheader("Detalle por Campo")
+    st.subheader("Ficha Completa de Calidad por Campo")
+    st.caption("Tabla ordenada por nulidad descendente. Usa esta vista para decidir qué campos pasar a Gold y cuáles descartar.")
     _detail_table(df)
 
 
@@ -791,7 +815,7 @@ def _render_silver(df: pd.DataFrame, df_bronze):
 
 def _render_gold(df: pd.DataFrame):
     st.markdown("## 🥇 Capa Gold — Feature-Enriched")
-    st.caption("Dataset enriquecido listo para análisis y modelos.")
+    st.caption("Dataset final con features derivadas, listo para entrenar modelos. Aquí el foco cambia: ya no es solo nulidad, sino distribución, multicolinealidad y utilidad predictiva.")
 
     total_g  = len(df)
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -813,12 +837,12 @@ def _render_gold(df: pd.DataFrame):
 
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Score de Calidad")
-        st.caption("Ref: 80% = umbral aceptable")
+        st.subheader("Score Global de Calidad")
+        st.caption("Score final del dataset de modelado. ≥80% es el umbral mínimo para iniciar entrenamiento sin riesgo de sesgo por nulos.")
         st.plotly_chart(_gauge(score_g, "Gold", C_GOLD, C_GOLD_LIGHT), use_container_width=True)
     with c2:
-        st.subheader("Asimetría por Feature Numérico")
-        st.caption("Rojo = |skew|>2 (transformación urgente), naranja = |skew|>1 (recomendada), verde = aceptable para modelos lineales.")
+        st.subheader("Asimetría de Features Numéricos")
+        st.caption("Rojo (|skew|>2): aplicar log/Box-Cox antes de modelos lineales o KNN. Naranja (|skew|>1): recomendable. Verde: distribución aceptable sin transformar.")
         fig_skew = _skewness_profile(df, C_GOLD, C_GOLD_LIGHT)
         if fig_skew:
             st.plotly_chart(fig_skew, use_container_width=True)
@@ -829,16 +853,17 @@ def _render_gold(df: pd.DataFrame):
     nulls.columns = ["columna", "nulos_pct"]
     nulls["nulos_pct"] = (nulls["nulos_pct"] * 100).round(2)
     nulls["total_filas_dataset"] = total_g
-    st.subheader("Nulidad por Campo (datos reales)")
-    st.caption("Cada barra = % de filas nulas para ese campo.")
+    st.subheader("Nulidad por Campo — Datos Reales Gold")
+    st.caption("Campos con nulos en Gold afectan directamente el entrenamiento. Cualquier campo >10% debería haberse imputado o descartado antes de esta capa.")
     st.plotly_chart(_nullity_hbar(nulls, C_GOLD, C_GOLD_LIGHT, ""), use_container_width=True)
 
     if num_cols:
-        st.subheader("Estadísticas Descriptivas — Campos Numéricos")
+        st.subheader("Estadísticas Descriptivas — Features Numéricos")
+        st.caption("Mean/std para detectar escala. Min/max para identificar rangos anómalos. 50% (mediana) vs mean: divergencia indica asimetría.")
         st.dataframe(df[num_cols].describe().T.round(3), use_container_width=True)
 
-    st.subheader("Matriz de Correlación — Campos Numéricos")
-    st.caption("Solo triángulo inferior. Rojo = correlación negativa, Azul = positiva.")
+    st.subheader("Matriz de Correlación de Pearson — Features Numéricos")
+    st.caption("Solo triángulo inferior. Azul = correlación positiva, Rojo = negativa. |r|>0.8: posible multicolinealidad — considerar eliminar uno de los dos campos para modelos lineales.")
     fig_corr = _corr_heatmap(df, "Correlación — Gold", C_GOLD_LIGHT)
     if fig_corr:
         st.plotly_chart(fig_corr, use_container_width=True)
@@ -852,6 +877,7 @@ def _render_gold(df: pd.DataFrame):
 
 def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
     st.markdown("## ⚖️ Bronze vs Silver — Evolución de la Calidad")
+    st.caption("Mide el impacto real del pipeline de limpieza. Cada gráfica compara el mismo campo antes y después de la transformación Silver.")
 
     bronze_cols = set(df_bronze["columna"])
     silver_cols = set(df_silver["columna"])
@@ -872,20 +898,20 @@ def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
         f"Existen {len(common)} campos comunes comparables entre ambas capas."
     )
 
-    st.subheader("Radar de Completitud por Campo")
-    st.caption("Muestra qué tan completo (sin nulos) está cada campo en cada capa.")
+    st.subheader("Radar de Completitud por Campo (Bronze vs Silver)")
+    st.caption("Radio más largo = menos nulos. El área de Silver debería envolver a Bronze. Campos donde Bronze supera a Silver indican regresión en la limpieza.")
     fig_radar = _completeness_radar(df_bronze, df_silver)
     if fig_radar:
         st.plotly_chart(fig_radar, use_container_width=True)
 
     st.subheader("Reducción de Nulidad por Campo (Bronze → Silver)")
-    st.caption("Verde = mejoró, rojo = empeoró. Top 18 campos.")
+    st.caption("Magnitud del cambio en puntos porcentuales. Verde = el campo mejoró en Silver. Rojo = regresión (más nulos que en Bronze) — requiere revisión del job.")
     fig_wf = _improvement_waterfall(df_bronze, df_silver)
     if fig_wf:
         st.plotly_chart(fig_wf, use_container_width=True)
 
-    st.subheader("Scatter de Nulidad: Bronze (X) vs Silver (Y)")
-    st.caption("Puntos bajo la diagonal = mejoraron. Tamaño proporcional a la mejora absoluta.")
+    st.subheader("Dispersión de Nulidad: Bronze (X) vs Silver (Y)")
+    st.caption("Puntos bajo la diagonal (y < x) = campo mejoró. Sobre la diagonal = empeoró. Sobre el eje x = campo sin nulos en Bronze que los ganó en Silver.")
     fig_sc = _null_scatter_b_vs_s(df_bronze, df_silver)
     if fig_sc:
         st.plotly_chart(fig_sc, use_container_width=True)
@@ -959,9 +985,10 @@ def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
 def _render_correlaciones(df_bronze, df_silver, df_gold):
     st.markdown("## 🔗 Matrices de Correlación por Capa")
     st.info(
-        "Para Bronze y Silver se correlacionan las métricas de calidad "
-        "(nulos, cardinalidad, outliers) de cada campo. "
-        "Para Gold se correlacionan las variables numéricas reales del dataset enriquecido."
+        "Bronze y Silver: correlación entre métricas de calidad (nulos, cardinalidad, outliers) "
+        "por campo — revela si ciertos tipos de campos sistemáticamente tienen peor calidad.\n\n"
+        "Gold: correlación entre variables numéricas reales — detecta multicolinealidad, "
+        "relaciones lineales y dependencias que informan la selección de features para el modelo."
     )
 
     meta_cols = ["nulos_n", "nulos_pct", "unicos_n", "outliers_n"]
@@ -970,7 +997,7 @@ def _render_correlaciones(df_bronze, df_silver, df_gold):
 
     with tab_b:
         st.subheader("Correlación de Métricas de Calidad — Bronze")
-        st.caption("¿Campos con más nulos tienden a tener más outliers?")
+        st.caption("¿Los campos con alta nulidad también tienen alta cardinalidad o más outliers? Patrones aquí sugieren un problema sistémico en la fuente de datos.")
         if df_bronze is not None:
             avail = [c for c in meta_cols if c in df_bronze.columns]
             if len(avail) >= 2:
@@ -981,7 +1008,7 @@ def _render_correlaciones(df_bronze, df_silver, df_gold):
 
     with tab_s:
         st.subheader("Correlación de Métricas de Calidad — Silver")
-        st.caption("¿Se mantuvo la estructura de correlaciones tras la limpieza?")
+        st.caption("Si la estructura de correlaciones cambió respecto a Bronze, el pipeline alteró relaciones entre campos — puede ser deseable (limpieza) o problemático (pérdida de señal).")
         if df_silver is not None:
             avail = [c for c in meta_cols if c in df_silver.columns]
             if len(avail) >= 2:
@@ -992,7 +1019,7 @@ def _render_correlaciones(df_bronze, df_silver, df_gold):
 
     with tab_g:
         st.subheader("Correlación de Variables Reales — Gold")
-        st.caption("Selecciona los campos numéricos a incluir en la matriz.")
+        st.caption("Feature selection: |r|>0.8 entre dos features = considerar eliminar uno (multicolinealidad). |r|>0.3 con el target = señal predictiva relevante.")
         if df_gold is not None:
             num_cols = df_gold.select_dtypes(include=[np.number]).columns.tolist()
             if len(num_cols) < 2:
