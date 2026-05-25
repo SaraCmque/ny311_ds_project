@@ -580,54 +580,25 @@ def _null_scatter_b_vs_s(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go
 # HELPERS HTML
 # ═══════════════════════════════════════════════════════════════
 
-def _kpi_card(label: str, value: str, delta: str = "", delta_type: str = "neu") -> str:
-    delta_html = f'<div class="kpi-delta kpi-{delta_type}">{delta}</div>' if delta else ""
-    return f"""
-    <div class="kpi-card">
-        <div class="kpi-label">{label}</div>
-        <div class="kpi-value">{value}</div>
-        {delta_html}
-    </div>"""
-
-
-def _kpi_row(*cards: str) -> str:
-    return '<div class="kpi-row">' + "".join(cards) + "</div>"
-
-
-def _chart_wrap(title: str, desc: str, content_fn):
-    st.markdown(
-        f'<div class="chart-card"><div class="chart-title">{title}</div>'
-        f'<div class="chart-desc">{desc}</div></div>',
-        unsafe_allow_html=True,
-    )
-    content_fn()
-
-
-def _nullity_html_table(df_meta: pd.DataFrame, layer_color: str) -> str:
-    cols = [c for c in ["columna","tipo_dato","nulos_pct","unicos_n","outliers_n"] if c in df_meta.columns]
-    rows = ""
-    for _, r in df_meta[cols].sort_values("nulos_pct", ascending=False).iterrows():
-        pct   = r.get("nulos_pct", 0)
-        bar   = _null_bar_html(pct, layer_color)
-        chip  = _null_chip(pct)
-        uniq  = f"{int(r['unicos_n']):,}" if "unicos_n" in r.index else "—"
-        out   = f"{int(r['outliers_n']):,}" if "outliers_n" in r.index and not pd.isna(r.get("outliers_n")) else "—"
-        dtype = r.get("tipo_dato", "—")
-        rows += (
-            f"<tr><td><b>{r['columna']}</b></td><td>{dtype}</td>"
-            f"<td>{bar}&nbsp;{chip}</td><td>{uniq}</td><td>{out}</td></tr>"
-        )
-    headers = "<tr><th>Campo</th><th>Tipo</th><th>Nulidad</th><th>Únicos</th><th>Outliers</th></tr>"
-    return f'<table class="prog-table">{headers}{rows}</table>'
-
-
 def _section(title: str, sub: str = ""):
-    sub_html = f'<div class="section-sub">{sub}</div>' if sub else ""
-    st.markdown(f'<div class="section-title">{title}</div>{sub_html}', unsafe_allow_html=True)
+    st.subheader(title)
+    if sub:
+        st.caption(sub)
 
 
 def _insight(text: str):
-    st.markdown(f'<div class="insight">{text}</div>', unsafe_allow_html=True)
+    # Strip basic HTML tags for plain text rendering
+    import re
+    clean = re.sub(r"<[^>]+>", "", text)
+    st.info(clean)
+
+
+def _detail_table(df_meta: pd.DataFrame):
+    cols = [c for c in ["columna", "tipo_dato", "nulos_n", "nulos_pct", "unicos_n", "outliers_n"] if c in df_meta.columns]
+    st.dataframe(
+        df_meta[cols].sort_values("nulos_pct", ascending=False).reset_index(drop=True),
+        use_container_width=True,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -635,65 +606,62 @@ def _insight(text: str):
 # ═══════════════════════════════════════════════════════════════
 
 def _render_bronze(df: pd.DataFrame):
-    st.markdown('<span class="layer-badge layer-bronze">🟤 Capa Bronze</span>', unsafe_allow_html=True)
-    st.markdown("### CSV Original — Estado crudo de los datos")
+    st.markdown("## 🟤 Capa Bronze — CSV Original")
+    st.caption("Estado crudo de los datos antes de cualquier transformación.")
 
-    total_f = df["total_filas_dataset"].iloc[0]
-    total_d = df["duplicados_dataset"].iloc[0]
-    score   = quality_score(df)
-    ink, _  = _score_color(score)
+    total_f  = df["total_filas_dataset"].iloc[0]
+    total_d  = df["duplicados_dataset"].iloc[0]
+    score    = quality_score(df)
     null_avg = df["nulos_pct"].mean() if "nulos_pct" in df.columns else 0
 
-    st.markdown(_kpi_row(
-        _kpi_card("Total registros",    f"{total_f:,}"),
-        _kpi_card("Duplicados",          f"{total_d:,}", "⚠ Presentes", "neg"),
-        _kpi_card("Campos en schema",    f"{len(df):,}"),
-        _kpi_card("Nulidad promedio",    f"{null_avg:.1f}%", "—", "neu"),
-        _kpi_card("Score calidad",       f"{score:.1f}%", "Ref: meta ≥ 80%", "pos" if score >= 80 else "neg"),
-    ), unsafe_allow_html=True)
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Total registros",   f"{total_f:,}")
+    m2.metric("Duplicados",         f"{total_d:,}")
+    m3.metric("Campos en schema",   f"{len(df):,}")
+    m4.metric("Nulidad promedio",   f"{null_avg:.1f}%")
+    m5.metric("Score calidad",      f"{score:.1f}%",  delta="≥80% meta", delta_color="normal" if score >= 80 else "inverse")
 
-    _insight(
-        f"El dataset Bronze contiene <strong>{total_f:,} registros</strong> con "
-        f"<strong>{total_d:,} duplicados</strong>. La nulidad promedio es de "
-        f"<strong>{null_avg:.1f}%</strong> — los campos con mayor nulidad requieren "
-        f"limpieza en la capa Silver."
+    st.info(
+        f"El dataset Bronze contiene {total_f:,} registros con {total_d:,} duplicados. "
+        f"Nulidad promedio: {null_avg:.1f}% — los campos con mayor nulidad serán limpiados en Silver."
     )
 
-    # Gauge + Donut
     c1, c2 = st.columns(2)
     with c1:
-        _section("Score de Calidad", "Ref: 80% = umbral aceptable (línea azul)")
+        st.subheader("Score de Calidad")
+        st.caption("Ref: 80% = umbral aceptable (línea azul)")
         st.plotly_chart(_gauge(score, "Bronze", C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
     with c2:
-        _section("Tipos de Dato", "Composición del schema por tipo")
+        st.subheader("Tipos de Dato")
+        st.caption("Composición del schema por tipo")
         st.plotly_chart(_donut_dtype(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
 
-    # Nulidad horizontal
-    _section("Nulidad por Campo", "Campos ordenados de menor a mayor nulidad. Umbral recomendado: 10% (línea naranja).")
+    st.subheader("Nulidad por Campo")
+    st.caption("Campos ordenados de menor a mayor nulidad. Umbral recomendado: 10% (línea naranja).")
     st.plotly_chart(_nullity_hbar(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
 
-    # Treemap completitud
-    _section("Mapa de Completitud", "Área ∝ cardinalidad; color = % completitud (verde = completo, rojo = nulo).")
+    st.subheader("Mapa de Completitud")
+    st.caption("Área proporcional a la cardinalidad; color = % completitud (verde = completo, rojo = nulo).")
     fig_tree = _nullity_treemap(df, C_BRONZE, "Completitud y cardinalidad — Bronze")
     if fig_tree:
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    # Outliers + Cardinalidad
     c3, c4 = st.columns(2)
     with c3:
-        _section("Outliers", "Campos con anomalías detectadas (IQR).")
+        st.subheader("Outliers")
+        st.caption("Campos con anomalías detectadas (IQR).")
         fig_out = _outlier_funnel(df, C_BRONZE, C_BRONZE_LIGHT)
         if fig_out:
             st.plotly_chart(fig_out, use_container_width=True)
         else:
             st.success("✅ No se detectaron outliers en Bronze.")
     with c4:
-        _section("Cardinalidad", "Valores únicos por campo.")
+        st.subheader("Cardinalidad")
+        st.caption("Valores únicos por campo.")
         st.plotly_chart(_cardinality_bar(df, C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
 
-    # Tabla detalle
-    _section("Detalle por Campo")
-    st.markdown(_nullity_html_table(df, C_BRONZE), unsafe_allow_html=True)
+    st.subheader("Detalle por Campo")
+    _detail_table(df)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -701,56 +669,55 @@ def _render_bronze(df: pd.DataFrame):
 # ═══════════════════════════════════════════════════════════════
 
 def _render_silver(df: pd.DataFrame, df_bronze):
-    st.markdown('<span class="layer-badge layer-silver">🔘 Capa Silver</span>', unsafe_allow_html=True)
-    st.markdown("### Parquet Limpio — Tras deduplicación y normalización")
+    st.markdown("## 🔘 Capa Silver — Parquet Limpio")
+    st.caption("Tras deduplicación, normalización y limpieza de nulos críticos.")
 
     total_s  = df["total_filas_dataset"].iloc[0]
     score_s  = quality_score(df)
     null_avg = df["nulos_pct"].mean() if "nulos_pct" in df.columns else 0
-    ink, _   = _score_color(score_s)
 
     reduction = ""
-    delta_lbl = ""
     if df_bronze is not None:
         total_f   = df_bronze["total_filas_dataset"].iloc[0]
         reduction = f"{((total_f - total_s)/total_f)*100:.1f}%"
-        delta_lbl = f"▼ {reduction} respecto a Bronze"
 
-    st.markdown(_kpi_row(
-        _kpi_card("Registros únicos",   f"{total_s:,}", delta_lbl, "pos"),
-        _kpi_card("Duplicados",          "0", "✅ Eliminados", "pos"),
-        _kpi_card("Campos en schema",    f"{len(df):,}"),
-        _kpi_card("Nulidad promedio",    f"{null_avg:.1f}%"),
-        _kpi_card("Score calidad",       f"{score_s:.1f}%", "Ref: meta ≥ 80%", "pos" if score_s >= 80 else "neg"),
-    ), unsafe_allow_html=True)
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Registros únicos",  f"{total_s:,}",  delta=f"-{reduction} vs Bronze" if reduction else None, delta_color="normal")
+    m2.metric("Duplicados",         "0",              delta="Eliminados", delta_color="normal")
+    m3.metric("Campos en schema",   f"{len(df):,}")
+    m4.metric("Nulidad promedio",   f"{null_avg:.1f}%")
+    m5.metric("Score calidad",      f"{score_s:.1f}%", delta="≥80% meta", delta_color="normal" if score_s >= 80 else "inverse")
 
-    _insight(
-        f"Tras la limpieza Silver se retuvieron <strong>{total_s:,} registros únicos</strong> "
-        f"(reducción de <strong>{reduction}</strong>). Los duplicados son <strong>0</strong>. "
-        f"La nulidad promedio bajó a <strong>{null_avg:.1f}%</strong>."
-    )
+    if reduction:
+        st.info(
+            f"Silver retiene {total_s:,} registros únicos (reducción del {reduction} respecto a Bronze). "
+            f"Duplicados eliminados. Nulidad promedio: {null_avg:.1f}%."
+        )
 
     c1, c2 = st.columns(2)
     with c1:
-        _section("Score de Calidad", "Ref: 80% = umbral aceptable")
+        st.subheader("Score de Calidad")
+        st.caption("Ref: 80% = umbral aceptable")
         st.plotly_chart(_gauge(score_s, "Silver", C_SILVER, C_SILVER_LIGHT), use_container_width=True)
     with c2:
-        _section("Tipos de Dato")
+        st.subheader("Tipos de Dato")
         st.plotly_chart(_donut_dtype(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
 
-    _section("Nulidad por Campo", "Umbral recomendado: 10% (línea naranja).")
+    st.subheader("Nulidad por Campo")
+    st.caption("Umbral recomendado: 10% (línea naranja).")
     st.plotly_chart(_nullity_hbar(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
 
-    _section("Mapa de Completitud", "Área ∝ cardinalidad; color = % completitud.")
+    st.subheader("Mapa de Completitud")
+    st.caption("Área proporcional a la cardinalidad; color = % completitud.")
     fig_tree = _nullity_treemap(df, C_SILVER, "Completitud y cardinalidad — Silver")
     if fig_tree:
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    _section("Cardinalidad")
+    st.subheader("Cardinalidad")
     st.plotly_chart(_cardinality_bar(df, C_SILVER, C_SILVER_LIGHT), use_container_width=True)
 
-    _section("Detalle por Campo")
-    st.markdown(_nullity_html_table(df, C_SILVER), unsafe_allow_html=True)
+    st.subheader("Detalle por Campo")
+    _detail_table(df)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -758,8 +725,8 @@ def _render_silver(df: pd.DataFrame, df_bronze):
 # ═══════════════════════════════════════════════════════════════
 
 def _render_gold(df: pd.DataFrame):
-    st.markdown('<span class="layer-badge layer-gold">🥇 Capa Gold</span>', unsafe_allow_html=True)
-    st.markdown("### Feature-Enriched — Dataset listo para análisis y modelos")
+    st.markdown("## 🥇 Capa Gold — Feature-Enriched")
+    st.caption("Dataset enriquecido listo para análisis y modelos.")
 
     total_g  = len(df)
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -767,45 +734,43 @@ def _render_gold(df: pd.DataFrame):
     null_pct = df.isnull().mean().mean() * 100
     score_g  = max(0.0, 100.0 - null_pct)
 
-    st.markdown(_kpi_row(
-        _kpi_card("Registros",         f"{total_g:,}"),
-        _kpi_card("Campos numéricos",  f"{len(num_cols):,}"),
-        _kpi_card("Campos categóricos",f"{len(cat_cols):,}"),
-        _kpi_card("Nulidad promedio",  f"{null_pct:.2f}%"),
-        _kpi_card("Score calidad",     f"{score_g:.1f}%", "Meta ≥ 80%", "pos" if score_g >= 80 else "neg"),
-    ), unsafe_allow_html=True)
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Registros",          f"{total_g:,}")
+    m2.metric("Campos numéricos",   f"{len(num_cols):,}")
+    m3.metric("Campos categóricos", f"{len(cat_cols):,}")
+    m4.metric("Nulidad promedio",   f"{null_pct:.2f}%")
+    m5.metric("Score calidad",      f"{score_g:.1f}%", delta="≥80% meta", delta_color="normal" if score_g >= 80 else "inverse")
 
-    _insight(
-        f"La capa Gold cuenta con <strong>{total_g:,} registros</strong>, "
-        f"<strong>{len(num_cols)} campos numéricos</strong> y "
-        f"<strong>{len(cat_cols)} categóricos</strong>. "
-        f"Nulidad global de <strong>{null_pct:.2f}%</strong>."
+    st.info(
+        f"Gold: {total_g:,} registros, {len(num_cols)} campos numéricos, "
+        f"{len(cat_cols)} categóricos. Nulidad global: {null_pct:.2f}%."
     )
 
     c1, c2 = st.columns(2)
     with c1:
-        _section("Score de Calidad", "Ref: 80% = umbral aceptable")
+        st.subheader("Score de Calidad")
+        st.caption("Ref: 80% = umbral aceptable")
         st.plotly_chart(_gauge(score_g, "Gold", C_GOLD, C_GOLD_LIGHT), use_container_width=True)
     with c2:
-        _section("Tipos de Dato")
+        st.subheader("Tipos de Dato")
         dtype_df = pd.DataFrame({"tipo_dato": df.dtypes.astype(str)}).reset_index()
         dtype_df.columns = ["columna", "tipo_dato"]
         st.plotly_chart(_donut_dtype(dtype_df, C_GOLD, C_GOLD_LIGHT, ""), use_container_width=True)
 
-    # Nulidad campos
     nulls = df.isnull().mean().reset_index()
     nulls.columns = ["columna", "nulos_pct"]
     nulls["nulos_pct"] = (nulls["nulos_pct"] * 100).round(2)
-    if "total_filas_dataset" not in nulls.columns:
-        nulls["total_filas_dataset"] = total_g
-    _section("Nulidad por Campo (datos reales)", "Cada barra = % de filas nulas para ese campo.")
+    nulls["total_filas_dataset"] = total_g
+    st.subheader("Nulidad por Campo (datos reales)")
+    st.caption("Cada barra = % de filas nulas para ese campo.")
     st.plotly_chart(_nullity_hbar(nulls, C_GOLD, C_GOLD_LIGHT, ""), use_container_width=True)
 
     if num_cols:
-        _section("Estadísticas Descriptivas — Campos Numéricos")
+        st.subheader("Estadísticas Descriptivas — Campos Numéricos")
         st.dataframe(df[num_cols].describe().T.round(3), use_container_width=True)
 
-    _section("Matriz de Correlación — Campos Numéricos", "Solo triángulo inferior. Rojo = correlación negativa, Azul = positiva.")
+    st.subheader("Matriz de Correlación — Campos Numéricos")
+    st.caption("Solo triángulo inferior. Rojo = correlación negativa, Azul = positiva.")
     fig_corr = _corr_heatmap(df, "Correlación — Gold", C_GOLD_LIGHT)
     if fig_corr:
         st.plotly_chart(fig_corr, use_container_width=True)
@@ -818,7 +783,7 @@ def _render_gold(df: pd.DataFrame):
 # ═══════════════════════════════════════════════════════════════
 
 def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
-    st.markdown("### ⚖️ Bronze ↔ Silver — Evolución de la Calidad")
+    st.markdown("## ⚖️ Bronze vs Silver — Evolución de la Calidad")
 
     bronze_cols = set(df_bronze["columna"])
     silver_cols = set(df_silver["columna"])
@@ -827,41 +792,38 @@ def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
     score_s     = quality_score(df_silver)
     delta_score = score_s - score_b
 
-    st.markdown(_kpi_row(
-        _kpi_card("Score Bronze",    f"{score_b:.1f}%"),
-        _kpi_card("Score Silver",    f"{score_s:.1f}%", f"+{delta_score:.1f}pp", "pos"),
-        _kpi_card("Campos comunes",  f"{len(common)}"),
-        _kpi_card("Solo en Bronze",  f"{len(bronze_cols - silver_cols)}"),
-        _kpi_card("Solo en Silver",  f"{len(silver_cols - bronze_cols)}"),
-    ), unsafe_allow_html=True)
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Score Bronze",    f"{score_b:.1f}%")
+    m2.metric("Score Silver",    f"{score_s:.1f}%", delta=f"+{delta_score:.1f}pp", delta_color="normal")
+    m3.metric("Campos comunes",  f"{len(common)}")
+    m4.metric("Solo en Bronze",  f"{len(bronze_cols - silver_cols)}")
+    m5.metric("Solo en Silver",  f"{len(silver_cols - bronze_cols)}")
 
-    _insight(
-        f"El score de calidad mejoró <strong>+{delta_score:.1f} puntos porcentuales</strong> de Bronze a Silver. "
-        f"Existen <strong>{len(common)} campos comunes</strong> comparables entre ambas capas."
+    st.info(
+        f"El score de calidad mejoró +{delta_score:.1f} puntos porcentuales de Bronze a Silver. "
+        f"Existen {len(common)} campos comunes comparables entre ambas capas."
     )
 
-    # Radar de completitud
-    _section("Radar de Completitud por Campo", "Muestra qué tan completo (sin nulos) está cada campo en cada capa.")
+    st.subheader("Radar de Completitud por Campo")
+    st.caption("Muestra qué tan completo (sin nulos) está cada campo en cada capa.")
     fig_radar = _completeness_radar(df_bronze, df_silver)
     if fig_radar:
         st.plotly_chart(fig_radar, use_container_width=True)
 
-    # Waterfall mejora
-    _section("Reducción de Nulidad por Campo (Bronze → Silver)", "Verde = mejoró, rojo = empeoró. Top 18 campos.")
+    st.subheader("Reducción de Nulidad por Campo (Bronze → Silver)")
+    st.caption("Verde = mejoró, rojo = empeoró. Top 18 campos.")
     fig_wf = _improvement_waterfall(df_bronze, df_silver)
     if fig_wf:
         st.plotly_chart(fig_wf, use_container_width=True)
 
-    # Scatter nulidad
-    _section("Scatter de Nulidad: Bronze (X) vs Silver (Y)",
-             "Puntos bajo la diagonal = mejoraron. Tamaño ∝ mejora absoluta.")
+    st.subheader("Scatter de Nulidad: Bronze (X) vs Silver (Y)")
+    st.caption("Puntos bajo la diagonal = mejoraron. Tamaño proporcional a la mejora absoluta.")
     fig_sc = _null_scatter_b_vs_s(df_bronze, df_silver)
     if fig_sc:
         st.plotly_chart(fig_sc, use_container_width=True)
 
-    # Selector interactivo
-    st.markdown("---")
-    _section("Comparativa Interactiva por Métrica")
+    st.divider()
+    st.subheader("Comparativa Interactiva por Métrica")
 
     metric_options = {"% Nulidad": "nulos_pct", "N° Nulos": "nulos_n", "Cardinalidad": "unicos_n"}
     if "outliers_n" in df_bronze.columns:
@@ -906,8 +868,7 @@ def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
     _apply_base(fig, xaxis=dict(tickangle=-35, tickfont=dict(size=9)), margin=dict(t=40, b=70, l=40, r=20))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Scoreboard table
-    _section("Scoreboard por Campo")
+    st.subheader("Scoreboard por Campo")
     if "nulos_pct" in df_bronze.columns and "nulos_pct" in df_silver.columns:
         sb_b = df_bronze[["columna","nulos_pct","unicos_n"]].add_suffix("_b").rename(columns={"columna_b":"columna"})
         sb_s = df_silver[["columna","nulos_pct","unicos_n"]].add_suffix("_s").rename(columns={"columna_s":"columna"})
@@ -928,11 +889,11 @@ def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
 # ═══════════════════════════════════════════════════════════════
 
 def _render_correlaciones(df_bronze, df_silver, df_gold):
-    st.markdown("### 🔗 Matrices de Correlación por Capa")
-    _insight(
-        "Para <strong>Bronze y Silver</strong> se correlacionan las <em>métricas de calidad</em> "
+    st.markdown("## 🔗 Matrices de Correlación por Capa")
+    st.info(
+        "Para Bronze y Silver se correlacionan las métricas de calidad "
         "(nulos, cardinalidad, outliers) de cada campo. "
-        "Para <strong>Gold</strong> se correlacionan las variables numéricas reales del dataset enriquecido."
+        "Para Gold se correlacionan las variables numéricas reales del dataset enriquecido."
     )
 
     meta_cols = ["nulos_n", "nulos_pct", "unicos_n", "outliers_n"]
@@ -940,8 +901,8 @@ def _render_correlaciones(df_bronze, df_silver, df_gold):
     tab_b, tab_s, tab_g = st.tabs(["🟤 Bronze", "🔘 Silver", "🥇 Gold"])
 
     with tab_b:
-        _section("Correlación de Métricas de Calidad — Bronze",
-                 "¿Campos con más nulos tienden a tener más outliers?")
+        st.subheader("Correlación de Métricas de Calidad — Bronze")
+        st.caption("¿Campos con más nulos tienden a tener más outliers?")
         if df_bronze is not None:
             avail = [c for c in meta_cols if c in df_bronze.columns]
             if len(avail) >= 2:
@@ -951,8 +912,8 @@ def _render_correlaciones(df_bronze, df_silver, df_gold):
                 st.info("Columnas insuficientes.")
 
     with tab_s:
-        _section("Correlación de Métricas de Calidad — Silver",
-                 "¿Se mantuvo la estructura de correlaciones tras la limpieza?")
+        st.subheader("Correlación de Métricas de Calidad — Silver")
+        st.caption("¿Se mantuvo la estructura de correlaciones tras la limpieza?")
         if df_silver is not None:
             avail = [c for c in meta_cols if c in df_silver.columns]
             if len(avail) >= 2:
@@ -962,8 +923,8 @@ def _render_correlaciones(df_bronze, df_silver, df_gold):
                 st.info("Columnas insuficientes.")
 
     with tab_g:
-        _section("Correlación de Variables Reales — Gold",
-                 "Selecciona los campos numéricos a incluir en la matriz.")
+        st.subheader("Correlación de Variables Reales — Gold")
+        st.caption("Selecciona los campos numéricos a incluir en la matriz.")
         if df_gold is not None:
             num_cols = df_gold.select_dtypes(include=[np.number]).columns.tolist()
             if len(num_cols) < 2:
