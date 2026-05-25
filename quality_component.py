@@ -318,26 +318,87 @@ def _nullity_hbar(df_meta: pd.DataFrame, layer_color: str, bg_color: str, title:
     return fig
 
 
-def _donut_dtype(df_meta: pd.DataFrame, layer_color: str, bg: str, title: str) -> go.Figure:
-    counts = df_meta["tipo_dato"].value_counts().reset_index()
-    counts.columns = ["tipo_dato", "cantidad"]
-    palette = [layer_color, "#78909C", "#AED6F1", "#A9DFBF", "#F9E79F", "#FADBD8"]
-    fig = go.Figure(go.Pie(
-        labels=counts["tipo_dato"], values=counts["cantidad"],
-        hole=0.55,
-        marker=dict(colors=palette[:len(counts)], line=dict(color="white", width=2)),
-        textinfo="percent+label",
-        textfont=dict(size=11, family=FONT),
-        hovertemplate="<b>%{label}</b><br>%{value} campos (%{percent})<extra></extra>",
+def _schema_type_quality(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go.Figure:
+    """Stacked bar: completeness vs. nullity rate per data type family.
+    Answers: which dtype groups carry the most quality risk for modeling?"""
+    if "tipo_dato" not in df_meta.columns or "nulos_pct" not in df_meta.columns:
+        counts = df_meta["tipo_dato"].value_counts().reset_index() if "tipo_dato" in df_meta.columns else pd.DataFrame()
+        if counts.empty:
+            return go.Figure()
+        counts.columns = ["tipo_dato", "n"]
+        fig = go.Figure(go.Bar(x=counts["tipo_dato"], y=counts["n"], marker_color=layer_color))
+        _apply_base(fig, height=270, paper_bgcolor=bg, plot_bgcolor=bg, margin=dict(t=50, b=20, l=10, r=10))
+        return fig
+
+    grp = df_meta.groupby("tipo_dato").agg(
+        n_campos=("columna", "count"),
+        nulidad_prom=("nulos_pct", "mean"),
+    ).reset_index()
+    grp["completitud"] = 100 - grp["nulidad_prom"]
+    grp = grp.sort_values("nulidad_prom", ascending=False)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Completitud (%)",
+        x=grp["tipo_dato"], y=grp["completitud"],
+        marker_color=layer_color,
+        text=grp["n_campos"].apply(lambda n: f"{n} col."),
+        textposition="inside",
+        textfont=dict(size=9, color="white"),
+        hovertemplate="<b>%{x}</b><br>Completitud: %{y:.1f}%<br>%{text}<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        name="Nulidad prom. (%)",
+        x=grp["tipo_dato"], y=grp["nulidad_prom"],
+        marker_color=C_DANGER,
+        opacity=0.75,
+        hovertemplate="<b>%{x}</b><br>Nulidad: %{y:.1f}%<extra></extra>",
     ))
     _apply_base(fig,
-        title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
-        height=260,
-        paper_bgcolor=bg,
-        plot_bgcolor=bg,
-        showlegend=True,
-        legend=dict(orientation="v", x=1.0, y=0.5, font=dict(size=10)),
-        margin=dict(t=50, b=20, l=10, r=10),
+        barmode="stack",
+        height=270,
+        paper_bgcolor=bg, plot_bgcolor=bg,
+        legend=dict(orientation="h", y=1.14, x=0, font=dict(size=10)),
+        margin=dict(t=60, b=30, l=10, r=10),
+        yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor="#EEEEEE", title="% Columnas"),
+        xaxis=dict(tickfont=dict(size=10), title="Tipo de dato"),
+    )
+    return fig
+
+
+def _skewness_profile(df_data: pd.DataFrame, layer_color: str, bg: str) -> go.Figure | None:
+    """Horizontal bar of |skewness| per numeric feature.
+    Features with |skew| > 1 likely need log/sqrt transform before modeling.
+    Red => |skew|>2 (severe), Orange => |skew|>1 (moderate), layer color => OK."""
+    num = df_data.select_dtypes(include=[np.number])
+    if num.shape[1] < 2:
+        return None
+    skew = num.skew().abs().sort_values(ascending=False).head(22)
+    colors = [C_DANGER if s > 2 else C_WARNING if s > 1 else layer_color for s in skew.values]
+    fig = go.Figure(go.Bar(
+        x=skew.values,
+        y=skew.index.tolist(),
+        orientation="h",
+        marker_color=colors,
+        text=[f"{s:.2f}" for s in skew.values],
+        textposition="outside",
+        textfont=dict(size=9),
+        hovertemplate="<b>%{y}</b><br>|Skewness|: %{x:.3f}<extra></extra>",
+    ))
+    fig.add_vline(x=1.0, line_dash="dot", line_color=C_WARNING, line_width=1.5,
+                  annotation_text="Umbral moderado (1)",
+                  annotation_position="bottom right",
+                  annotation_font=dict(size=9, color=C_WARNING))
+    fig.add_vline(x=2.0, line_dash="dot", line_color=C_DANGER, line_width=1.5,
+                  annotation_text="Umbral severo (2)",
+                  annotation_position="top right",
+                  annotation_font=dict(size=9, color=C_DANGER))
+    _apply_base(fig,
+        height=max(320, len(skew) * 26),
+        paper_bgcolor=bg, plot_bgcolor=bg,
+        margin=dict(t=50, b=20, l=160, r=80),
+        xaxis=dict(title="|Skewness|", gridcolor="#EEEEEE"),
+        yaxis=dict(tickfont=dict(size=10), categoryorder="total ascending"),
     )
     return fig
 
@@ -635,9 +696,9 @@ def _render_bronze(df: pd.DataFrame):
         st.caption("Ref: 80% = umbral aceptable (línea azul)")
         st.plotly_chart(_gauge(score, "Bronze", C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
     with c2:
-        st.subheader("Tipos de Dato")
-        st.caption("Composición del schema por tipo")
-        st.plotly_chart(_donut_dtype(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
+        st.subheader("Calidad por Tipo de Dato")
+        st.caption("Verde = completitud; rojo = nulidad promedio por familia. Revela qué grupos implican más riesgo de datos faltantes.")
+        st.plotly_chart(_schema_type_quality(df, C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
 
     st.subheader("Nulidad por Campo")
     st.caption("Campos ordenados de menor a mayor nulidad. Umbral recomendado: 10% (línea naranja).")
@@ -703,8 +764,9 @@ def _render_silver(df: pd.DataFrame, df_bronze):
         st.caption("Ref: 80% = umbral aceptable")
         st.plotly_chart(_gauge(score_s, "Silver", C_SILVER, C_SILVER_LIGHT), use_container_width=True)
     with c2:
-        st.subheader("Tipos de Dato")
-        st.plotly_chart(_donut_dtype(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
+        st.subheader("Calidad por Tipo de Dato")
+        st.caption("Compara la completitud vs. nulidad promedio por familia de tipo tras la limpieza Silver.")
+        st.plotly_chart(_schema_type_quality(df, C_SILVER, C_SILVER_LIGHT), use_container_width=True)
 
     st.subheader("Nulidad por Campo")
     st.caption("Umbral recomendado: 10% (línea naranja).")
@@ -755,10 +817,13 @@ def _render_gold(df: pd.DataFrame):
         st.caption("Ref: 80% = umbral aceptable")
         st.plotly_chart(_gauge(score_g, "Gold", C_GOLD, C_GOLD_LIGHT), use_container_width=True)
     with c2:
-        st.subheader("Tipos de Dato")
-        dtype_df = pd.DataFrame({"tipo_dato": df.dtypes.astype(str)}).reset_index()
-        dtype_df.columns = ["columna", "tipo_dato"]
-        st.plotly_chart(_donut_dtype(dtype_df, C_GOLD, C_GOLD_LIGHT, ""), use_container_width=True)
+        st.subheader("Asimetría por Feature Numérico")
+        st.caption("Rojo = |skew|>2 (transformación urgente), naranja = |skew|>1 (recomendada), verde = aceptable para modelos lineales.")
+        fig_skew = _skewness_profile(df, C_GOLD, C_GOLD_LIGHT)
+        if fig_skew:
+            st.plotly_chart(fig_skew, use_container_width=True)
+        else:
+            st.info("No hay columnas numéricas suficientes.")
 
     nulls = df.isnull().mean().reset_index()
     nulls.columns = ["columna", "nulos_pct"]
