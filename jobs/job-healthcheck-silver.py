@@ -14,7 +14,6 @@ job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
 
 # 1. LEER LA TABLA EXISTENTE EN PARQUET
-# Según tu imagen, la ruta es s3://proyecto-ny311/silver/ny311/
 path_silver = "s3://proyecto-ny311/silver/ny311/"
 df_silver = spark.read.parquet(path_silver)
 
