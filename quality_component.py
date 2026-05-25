@@ -421,8 +421,11 @@ def _corr_heatmap(df_data: pd.DataFrame, title: str, bg: str = "white") -> go.Fi
             [0.75, "#90CAF9"], [1.0,  "#1565C0"],
         ],
         zmid=0, zmin=-1, zmax=1,
-        colorbar=dict(title="r", thickness=14, len=0.8,
-                      tickfont=dict(size=10), titlefont=dict(size=11)),
+        colorbar=dict(
+            title=dict(text="r", font=dict(size=11)),
+            thickness=14, len=0.8,
+            tickfont=dict(size=10),
+        ),
         text=np.where(mask, "", np.round(corr.values, 2)).tolist(),
         texttemplate="%{text}",
         textfont=dict(size=9),
