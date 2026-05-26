@@ -16,7 +16,7 @@ def get_s3_client():
     )
 
 @st.cache_data(ttl=3600)
-def load_from_s3(prefix: str, bucket: str = "proyecto-ny311") -> pd.DataFrame | None:
+def load_from_s3(prefix: str, bucket: str = "proyect-ny311") -> pd.DataFrame | None:
     """Carga datos desde S3 evitando operaciones HeadObject automáticas de pandas."""
     try:
         s3 = get_s3_client()
