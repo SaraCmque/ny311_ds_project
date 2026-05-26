@@ -122,4 +122,30 @@ def render_dynamic_charts():
     fig_pareto.update_layout(
         title="Top 5 Agencias por Impacto Financiero",
         yaxis=dict(title="Dólares (USD)", showgrid=False),
-        yaxis2=dict(title="Porcentaje Acumulado", ove
+        yaxis2=dict(title="Porcentaje Acumulado", overlaying='y', side='right', range=[0, 1.1], tickformat=".0%"),
+        plot_bgcolor="white", showlegend=False
+    )
+    st.plotly_chart(fig_pareto, use_container_width=True)
+
+    st.divider()
+
+    # 6. ESPACIAL: Mapa (Más limpio)
+    st.subheader("4. Mapa de Focos de Negligencia")
+    fig_map = px.scatter_mapbox(
+        df_overdue.sample(n=min(2000, len(df_overdue))), 
+        lat="latitude", lon="longitude", 
+        color_discrete_sequence=[COLOR_FOCO], # Color único para enfatizar "problema"
+        size="estimated_liability_usd",
+        zoom=10, height=500, mapbox_style="carto-positron",
+        title="Ubicación Geográfica de Casos Críticos"
+    )
+    fig_map.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
+    st.plotly_chart(fig_map, use_container_width=True)
+
+    # CIERRE CON IMPACTO
+    st.markdown(f"""
+        <div style="background-color:{COLOR_FOCO}; padding:30px; border-radius:15px; text-align:center;">
+            <h2 style="color:white; margin:0;">PASIVO LEGAL TOTAL EN RIESGO</h2>
+            <h1 style="color:white; margin:0; font-size:50px;">${riesgo_total_usd/1e6:.1f} Millones USD</h1>
+        </div>
+    """, unsafe_allow_html=True)
