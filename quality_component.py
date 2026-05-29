@@ -559,35 +559,86 @@ def _corr_heatmap(df_data: pd.DataFrame, title: str, bg: str = "white") -> go.Fi
     return fig
 
 
-def _nullity_treemap(df_meta: pd.DataFrame, layer_color: str, title: str) -> go.Figure | None:
+def _cardinality_completeness_scatter(df_meta: pd.DataFrame, layer_color: str, title: str) -> go.Figure | None:
+    """Scatter plot (Vocabulario Visual: Correlación) — Cardinalidad (X) vs. Completitud (Y).
+    Cada punto es un campo. Permite ver si los campos con más valores únicos
+    también tienden a tener más nulos (correlación negativa = problema sistémico).
+    Cuadrante superior-derecho = alta cardinalidad Y alta completitud (ideal).
+    Cuadrante inferior-derecho = alta cardinalidad PERO muchos nulos (prioritario)."""
     if "nulos_pct" not in df_meta.columns or "unicos_n" not in df_meta.columns:
         return None
     df = df_meta[["columna", "nulos_pct", "unicos_n"]].copy()
     df["completitud"] = (100 - df["nulos_pct"]).clip(0, 100)
-    df["label"] = df["columna"] + "<br>" + df["completitud"].round(1).astype(str) + "% completo"
-    fig = px.treemap(
-        df, path=["columna"], values="unicos_n",
-        color="completitud",
-        color_continuous_scale=[[0, C_DANGER], [0.5, C_WARNING], [1, C_SUCCESS]],
-        range_color=[0, 100],
-        hover_data={"nulos_pct": ":.1f"},
-        labels={"completitud": "% Completo", "nulos_pct": "% Nulos"},
-        title=title,
-    )
-    fig.update_traces(
-        texttemplate="<b>%{label}</b><br>%{value:,} únicos<br>%{color:.0f}% completo",
-        textfont=dict(size=11, family=FONT),
-        hovertemplate="<b>%{label}</b><br>Valores únicos: %{value:,}<br>Completitud: %{color:.1f}%<br>Nulidad: %{customdata:.1f}%<extra></extra>",
-    )
-    fig.update_layout(
-        height=380, paper_bgcolor="white",
-        margin=dict(t=50, b=10, l=10, r=10),
-        font=dict(family=FONT),
-        coloraxis_colorbar=dict(
-            title="% Completo", thickness=12,
-            tickvals=[0, 25, 50, 75, 100],
-            ticktext=["0% (todo nulo)", "25%", "50%", "75%", "100% (sin nulos)"],
+
+    def _point_color(row):
+        if row["completitud"] >= 90:
+            return C_SUCCESS
+        if row["completitud"] >= 60:
+            return C_WARNING
+        return C_DANGER
+
+    df["color"] = df.apply(_point_color, axis=1)
+
+    fig = go.Figure()
+
+    # Cuadrantes de referencia
+    x_mid = df["unicos_n"].median()
+    fig.add_vline(x=x_mid, line_dash="dot", line_color=C_MUTED, line_width=1,
+                  annotation_text="Mediana cardinalidad",
+                  annotation_position="top right",
+                  annotation_font=dict(size=9, color=C_MUTED))
+    fig.add_hline(y=80, line_dash="dot", line_color=C_INFO, line_width=1.5,
+                  annotation_text="Meta completitud 80%",
+                  annotation_position="right",
+                  annotation_font=dict(size=9, color=C_INFO))
+
+    # Puntos del scatter
+    for _, row in df.iterrows():
+        fig.add_trace(go.Scatter(
+            x=[row["unicos_n"]],
+            y=[row["completitud"]],
+            mode="markers+text",
+            marker=dict(size=10, color=row["color"],
+                        line=dict(width=1, color="white")),
+            text=[row["columna"]],
+            textposition="top center",
+            textfont=dict(size=8, family=FONT),
+            name=row["columna"],
+            showlegend=False,
+            hovertemplate=(
+                f"<b>{row['columna']}</b><br>"
+                f"Cardinalidad: {row['unicos_n']:,} valores únicos<br>"
+                f"Completitud: {row['completitud']:.1f}%<br>"
+                f"Nulidad: {row['nulos_pct']:.1f}%<extra></extra>"
+            ),
+        ))
+
+    # Leyenda manual de colores
+    for label, color in [("≥90% completo", C_SUCCESS), ("60–89%", C_WARNING), ("<60% (crítico)", C_DANGER)]:
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers",
+            marker=dict(size=10, color=color),
+            name=label, showlegend=True,
+        ))
+
+    _apply_base(fig,
+        title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
+        height=460,
+        paper_bgcolor="white", plot_bgcolor="white",
+        xaxis=dict(
+            title="Cardinalidad — N° de valores únicos",
+            gridcolor="#F0F0F0", tickfont=dict(size=10),
+            type="log",  # escala logarítmica para campos con rangos muy distintos
+            title_font=dict(size=11),
         ),
+        yaxis=dict(
+            title="Completitud (%)",
+            range=[-5, 108], ticksuffix="%",
+            gridcolor="#F0F0F0", tickfont=dict(size=10),
+            title_font=dict(size=11),
+        ),
+        legend=dict(orientation="h", y=-0.18, x=0, font=dict(size=10)),
+        margin=dict(t=55, b=80, l=80, r=30),
     )
     return fig
 
@@ -832,11 +883,11 @@ def _render_bronze(df: pd.DataFrame):
     st.caption("% de filas vacías por campo. Naranja (10%): revisar. Rojo (30%): imputar o descartar. Verde: aceptable.")
     st.plotly_chart(_nullity_hbar(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
 
-    st.subheader("Mapa de Completitud y Cardinalidad")
-    st.caption("Área = nº de valores únicos (cardinalidad). Color = completitud. Campos grandes y rojos son prioritarios: mucha diversidad pero datos faltantes.")
-    fig_tree = _nullity_treemap(df, C_BRONZE, "Completitud y cardinalidad — Bronze")
-    if fig_tree:
-        st.plotly_chart(fig_tree, use_container_width=True)
+    st.subheader("Cardinalidad vs. Completitud por Campo")
+    st.caption("Scatter plot (correlación): X = nº de valores únicos (escala log), Y = % completitud. Cuadrante inferior-derecho = alta cardinalidad con muchos nulos → prioridad de limpieza. Línea azul = meta 80%.")
+    fig_scatter = _cardinality_completeness_scatter(df, C_BRONZE, "Cardinalidad vs. Completitud — Bronze")
+    if fig_scatter:
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
     c3, c4 = st.columns(2)
     with c3:
@@ -901,11 +952,11 @@ def _render_silver(df: pd.DataFrame, df_bronze):
     st.caption("Naranja (10%): aún requiere atención. Rojo (30%): campo problemático para modelos. Comparar con Bronze para ver la mejora.")
     st.plotly_chart(_nullity_hbar(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
 
-    st.subheader("Mapa de Completitud y Cardinalidad")
-    st.caption("Área = cardinalidad. Color = completitud. Campos que siguen rojos en Silver son candidatos a descarte o feature engineering adicional.")
-    fig_tree = _nullity_treemap(df, C_SILVER, "Completitud y cardinalidad — Silver")
-    if fig_tree:
-        st.plotly_chart(fig_tree, use_container_width=True)
+    st.subheader("Cardinalidad vs. Completitud por Campo")
+    st.caption("Scatter plot (correlación): X = nº de valores únicos (escala log), Y = % completitud. Campos en el cuadrante inferior-derecho tras la limpieza Silver son candidatos a descarte o feature engineering adicional.")
+    fig_scatter = _cardinality_completeness_scatter(df, C_SILVER, "Cardinalidad vs. Completitud — Silver")
+    if fig_scatter:
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
     st.subheader("Cardinalidad por Campo")
     st.caption("Campos de muy alta cardinalidad en Silver podrían necesitar encoding especial (target encoding, hashing) antes del modelado.")
