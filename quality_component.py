@@ -247,35 +247,68 @@ def _apply_base(fig: go.Figure, **extra) -> go.Figure:
     return fig
 
 
-def _gauge(score: float, label: str, color: str, bg: str) -> go.Figure:
+def _bullet(score: float, label: str, color: str, bg: str) -> go.Figure:
+    """Bullet chart (gráfico de bala) — Vocabulario Visual: alternativa al gauge.
+    Muestra el score vs. umbral de referencia (80%) con bandas de calidad cualitativas.
+    Más eficiente en espacio y más legible que un velocímetro."""
     ink, _ = _score_color(score)
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=score,
-        delta={"reference": 80, "increasing": {"color": C_SUCCESS}, "decreasing": {"color": C_DANGER},
-               "font": {"size": 13}},
-        title={"text": label, "font": {"size": 13, "color": C_MUTED, "family": FONT}},
-        number={"suffix": "%", "font": {"size": 32, "color": ink, "family": FONT}},
-        gauge={
-            "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": C_BORDER,
-                     "tickfont": {"size": 10, "color": C_MUTED}},
-            "bar": {"color": ink, "thickness": 0.28},
-            "bgcolor": bg,
-            "borderwidth": 0,
-            "steps": [
-                {"range": [0,  50], "color": "#FFEBEE"},
-                {"range": [50, 80], "color": "#FFF8E1"},
-                {"range": [80,100], "color": "#E8F5E9"},
-            ],
-            "threshold": {
-                "line": {"color": C_INFO, "width": 2},
-                "thickness": 0.65, "value": 80,
-            },
-        },
+
+    fig = go.Figure()
+
+    # Bandas de fondo (rangos cualitativos)
+    bands = [
+        (0,  50, "#FFEBEE", "Crítico (0–50%)"),
+        (50, 80, "#FFF3E0", "Aceptable (50–80%)"),
+        (80, 100, "#E8F5E9", "Óptimo (80–100%)"),
+    ]
+    for x0, x1, band_color, band_label in bands:
+        fig.add_shape(
+            type="rect", x0=x0, x1=x1, y0=-0.35, y1=0.35,
+            fillcolor=band_color, line_width=0, layer="below",
+        )
+
+    # Barra principal (valor del score)
+    fig.add_trace(go.Bar(
+        x=[score], y=[""],
+        orientation="h",
+        marker_color=ink,
+        width=0.45,
+        hovertemplate=f"<b>{label}</b><br>Score: {score:.1f}%<extra></extra>",
+        showlegend=False,
     ))
-    fig.update_layout(height=230, paper_bgcolor="white",
-                      margin=dict(t=30, b=10, l=20, r=20),
-                      font=dict(family=FONT))
+
+    # Línea de referencia (meta 80%)
+    fig.add_shape(
+        type="line", x0=80, x1=80, y0=-0.5, y1=0.5,
+        line=dict(color=C_INFO, width=3, dash="solid"),
+    )
+    fig.add_annotation(
+        x=80, y=0.6, text="Meta\n80%", showarrow=False,
+        font=dict(size=9, color=C_INFO, family=FONT), yref="y",
+        align="center",
+    )
+
+    # Etiqueta del valor
+    fig.add_annotation(
+        x=min(score, 98), y=-0.62,
+        text=f"<b>{score:.1f}%</b>", showarrow=False,
+        font=dict(size=13, color=ink, family=FONT), yref="y",
+    )
+
+    fig.update_layout(
+        title=dict(text=label, font=dict(size=12, color=C_TEXT, family=FONT), x=0),
+        height=150,
+        paper_bgcolor=bg, plot_bgcolor=bg,
+        xaxis=dict(
+            range=[0, 105], ticksuffix="%", gridcolor="#EEEEEE",
+            tickfont=dict(size=10), title="Score de Calidad (%)",
+            title_font=dict(size=10),
+        ),
+        yaxis=dict(visible=False, range=[-1, 1]),
+        margin=dict(t=45, b=50, l=20, r=20),
+        font=dict(family=FONT),
+        bargap=0.5,
+    )
     return fig
 
 
@@ -414,32 +447,40 @@ def _skewness_profile(df_data: pd.DataFrame, layer_color: str, bg: str) -> go.Fi
     return fig
 
 
-def _outlier_funnel(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go.Figure | None:
+def _outlier_bar(df_meta: pd.DataFrame, layer_color: str, bg: str) -> go.Figure | None:
+    """Barras ordenadas (Vocabulario Visual: Magnitud) — campos con más outliers primero.
+    Se ordena descendente para destacar los campos más problemáticos."""
     if "outliers_n" not in df_meta.columns:
         return None
-    df_o = df_meta[df_meta["outliers_n"] > 0].sort_values("outliers_n", ascending=False)
+    df_o = df_meta[df_meta["outliers_n"] > 0].sort_values("outliers_n", ascending=True)  # asc para hbar
     if df_o.empty:
         return None
+
+    colors = [
+        C_DANGER  if v > df_o["outliers_n"].quantile(0.75) else
+        C_WARNING if v > df_o["outliers_n"].quantile(0.25) else
+        C_GOLD_MID
+        for v in df_o["outliers_n"]
+    ]
+
     fig = go.Figure(go.Bar(
-        x=df_o["columna"], y=df_o["outliers_n"],
-        marker=dict(
-            color=df_o["outliers_n"],
-            colorscale=[[0, C_GOLD_MID], [0.5, C_WARNING], [1, C_DANGER]],
-            showscale=True,
-            colorbar=dict(title="N° Outliers", thickness=12),
-        ),
-        text=df_o["outliers_n"],
+        x=df_o["outliers_n"],
+        y=df_o["columna"],
+        orientation="h",
+        marker=dict(color=colors, line=dict(width=0)),
+        text=[f"{v:,}" for v in df_o["outliers_n"]],
         textposition="outside",
-        textfont=dict(size=10),
-        hovertemplate="<b>%{x}</b><br>Valores atípicos (IQR×1.5): %{y:,}<br>Evaluar si son errores o casos reales<extra></extra>",
+        textfont=dict(size=9),
+        hovertemplate="<b>%{y}</b><br>Valores atípicos (IQR×1.5): %{x:,}<br>Evaluar si son errores o casos reales<extra></extra>",
     ))
+    h = max(280, len(df_o) * 28)
     _apply_base(fig,
-        title="Valores atípicos por campo (método IQR × 1.5)",
-        height=300,
+        title="Valores atípicos por campo — barras ordenadas (IQR × 1.5)",
+        height=h,
         paper_bgcolor=bg, plot_bgcolor=bg,
-        xaxis=dict(tickangle=-30, tickfont=dict(size=9), title="Campo"),
-        yaxis=dict(title="Cantidad de valores atípicos"),
-        margin=dict(t=50, b=90, l=60, r=40),
+        xaxis=dict(title="Cantidad de valores atípicos", gridcolor="#EEEEEE"),
+        yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10), title="Campo"),
+        margin=dict(t=50, b=30, l=150, r=80),
     )
     return fig
 
@@ -551,79 +592,145 @@ def _nullity_treemap(df_meta: pd.DataFrame, layer_color: str, title: str) -> go.
     return fig
 
 
-def _completeness_radar(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.Figure | None:
-    """Radar de completitud (1 - nulos_pct) para campos comunes."""
+def _completeness_slope(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.Figure | None:
+    """Slope chart (gráfico de pendientes) — Vocabulario Visual: Cambio entre dos puntos.
+    Reemplaza el gráfico de radar: muestra la variación de completitud por campo
+    entre Bronze y Silver. Verde = mejoró, Rojo = empeoró. Más legible que radar
+    para comparar 2 grupos con muchas variables."""
     common = sorted(set(df_bronze["columna"]) & set(df_silver["columna"]))
     if len(common) < 3:
         return None
-    # Limitar a 16 campos para legibilidad
-    common = common[:16]
+    common = common[:20]  # Limitar para legibilidad
 
     def _completeness(df, cols):
         sub = df[df["columna"].isin(cols)].set_index("columna")["nulos_pct"].reindex(cols).fillna(0)
-        return (100 - sub).clip(0, 100).tolist()
+        return (100 - sub).clip(0, 100)
 
-    b_vals = _completeness(df_bronze, common)
-    s_vals = _completeness(df_silver, common)
+    b_comp = _completeness(df_bronze, common)
+    s_comp = _completeness(df_silver, common)
 
     fig = go.Figure()
-    for vals, name, color, fill in [
-        (b_vals, "Bronze", C_BRONZE, "rgba(181,101,29,.18)"),
-        (s_vals, "Silver", C_SILVER, "rgba(84,110,122,.20)"),
-    ]:
-        theta = common + [common[0]]
-        r     = vals + [vals[0]]
-        fig.add_trace(go.Scatterpolar(
-            r=r, theta=theta, mode="lines+markers",
-            fill="toself", fillcolor=fill,
-            line=dict(color=color, width=2.5),
-            marker=dict(size=5),
-            name=name,
+
+    for col in common:
+        b_val = float(b_comp[col])
+        s_val = float(s_comp[col])
+        delta = s_val - b_val
+        color   = C_SUCCESS if delta >= 0 else C_DANGER
+        opacity = 0.9 if abs(delta) > 5 else 0.3
+        width   = 2.0 if abs(delta) > 5 else 1.0
+
+        fig.add_trace(go.Scatter(
+            x=[0, 1], y=[b_val, s_val],
+            mode="lines+markers",
+            line=dict(color=color, width=width),
+            marker=dict(size=5, color=color),
+            opacity=opacity,
+            name=col,
+            showlegend=False,
+            hovertemplate=(
+                f"<b>{col}</b><br>"
+                f"Bronze: {b_val:.1f}%<br>"
+                f"Silver: {s_val:.1f}%<br>"
+                f"Δ: {delta:+.1f} pp<extra></extra>"
+            ),
         ))
+
+        # Etiquetar solo los cambios significativos (>10 pp)
+        if abs(delta) > 10:
+            fig.add_annotation(
+                x=1.04, y=s_val, text=col, showarrow=False,
+                font=dict(size=9, color=color, family=FONT),
+                xanchor="left",
+            )
+
+    # Líneas de referencia 80% y 100%
+    for ref_y, ref_txt, ref_color in [(80, "Meta 80%", C_INFO), (100, "100% completo", C_SUCCESS)]:
+        fig.add_hline(
+            y=ref_y, line_dash="dot", line_color=ref_color, line_width=1,
+            annotation_text=ref_txt,
+            annotation_position="right",
+            annotation_font=dict(size=9, color=ref_color),
+        )
+
     fig.update_layout(
-        polar=dict(
-            bgcolor="#FAFAFA",
-            radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(size=9),
-                             ticksuffix="%", gridcolor="#E0E0E0", linecolor="#BDBDBD",
-                             title=dict(text="% completo", font=dict(size=9, color=C_MUTED))),
-            angularaxis=dict(tickfont=dict(size=9.5, family=FONT), gridcolor="#E8E8E8"),
+        title=dict(
+            text="Completitud por campo — Bronze → Silver (verde=mejoró, rojo=empeoró)",
+            font=dict(size=13, color=C_TEXT, family=FONT), x=0,
         ),
-        title=dict(text="Completitud por campo — Bronze vs Silver (100% = sin nulos)",
-                   font=dict(size=13, color=C_TEXT, family=FONT), x=0),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.18, font=dict(size=11)),
-        paper_bgcolor="white", margin=dict(t=60, b=70, l=30, r=30),
-        height=440, font=dict(family=FONT),
+        height=520,
+        paper_bgcolor="white", plot_bgcolor="white",
+        xaxis=dict(
+            tickvals=[0, 1], ticktext=["Bronze", "Silver"],
+            range=[-0.1, 1.5], gridcolor="#F0F0F0",
+            tickfont=dict(size=12, family=FONT, color=C_TEXT),
+            title="Capa",
+        ),
+        yaxis=dict(
+            range=[0, 108], ticksuffix="%", gridcolor="#EEEEEE",
+            title="% Completitud (100% = sin nulos)",
+            tickfont=dict(size=10),
+        ),
+        margin=dict(t=55, b=40, l=70, r=130),
+        font=dict(family=FONT),
     )
     return fig
 
 
-def _improvement_waterfall(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.Figure | None:
+def _improvement_diverging_bar(df_bronze: pd.DataFrame, df_silver: pd.DataFrame) -> go.Figure | None:
+    """Barras divergentes (Vocabulario Visual: Desviación) — desviación desde la baseline cero.
+    Verde (positivo) = campo mejoró (menos nulos en Silver).
+    Rojo (negativo) = campo empeoró (más nulos en Silver).
+    Las barras están ordenadas de mayor mejora a mayor regresión."""
     common = sorted(set(df_bronze["columna"]) & set(df_silver["columna"]))
     if not common:
         return None
-    b = df_bronze[df_bronze["columna"].isin(common)][["columna","nulos_pct"]].rename(columns={"nulos_pct":"b"})
-    s = df_silver[df_silver["columna"].isin(common)][["columna","nulos_pct"]].rename(columns={"nulos_pct":"s"})
+    b = df_bronze[df_bronze["columna"].isin(common)][["columna", "nulos_pct"]].rename(columns={"nulos_pct": "b"})
+    s = df_silver[df_silver["columna"].isin(common)][["columna", "nulos_pct"]].rename(columns={"nulos_pct": "s"})
     m = b.merge(s, on="columna")
-    m["delta"] = m["b"] - m["s"]
-    m = m.sort_values("delta", ascending=False).head(18)
+    m["delta"] = m["b"] - m["s"]  # positivo = mejoró
+    m = m.sort_values("delta", ascending=False).head(20)
 
     colors = [C_SUCCESS if v > 0 else (C_MUTED if v == 0 else C_DANGER) for v in m["delta"]]
+
     fig = go.Figure(go.Bar(
-        x=m["columna"], y=m["delta"],
+        x=m["columna"],
+        y=m["delta"],
         marker=dict(color=colors, line=dict(width=0)),
-        text=[f"{v:+.1f}%" for v in m["delta"]],
+        text=[f"{v:+.1f} pp" for v in m["delta"]],
         textposition="outside",
         textfont=dict(size=9.5),
-        hovertemplate="<b>%{x}</b><br>Reducción de nulidad: %{y:+.2f} pp<br>Positivo = mejoró en Silver<extra></extra>",
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "Δ nulidad (Bronze−Silver): %{y:+.2f} pp<br>"
+            "<i>Positivo = menos nulos en Silver (mejoró)</i><extra></extra>"
+        ),
     ))
-    fig.add_hline(y=0, line_dash="solid", line_color=C_BORDER, line_width=1)
+
+    # Línea base en cero — eje de divergencia
+    fig.add_hline(y=0, line_dash="solid", line_color="#424242", line_width=1.5)
+
+    # Anotaciones de referencia
+    fig.add_annotation(
+        x=1.01, y=1, xref="paper", yref="paper",
+        text="<b style='color:#2E7D32'>▲ Mejoró</b>",
+        showarrow=False, font=dict(size=10, family=FONT), xanchor="left",
+    )
+    fig.add_annotation(
+        x=1.01, y=0, xref="paper", yref="paper",
+        text="<b style='color:#C62828'>▼ Empeoró</b>",
+        showarrow=False, font=dict(size=10, family=FONT), xanchor="left",
+    )
+
     _apply_base(fig,
-        title="Reducción de nulidad por campo (Bronze → Silver) — verde mejoró, rojo empeoró",
-        height=340,
+        title="Reducción de nulidad por campo (Bronze → Silver) — barras divergentes",
+        height=360,
         xaxis=dict(tickangle=-35, tickfont=dict(size=9), title="Campo"),
-        yaxis=dict(title="Reducción de nulidad (puntos porcentuales)",
-                   zeroline=True, zerolinecolor=C_BORDER),
-        margin=dict(t=55, b=90, l=70, r=20),
+        yaxis=dict(
+            title="Δ nulidad (puntos porcentuales)",
+            zeroline=True, zerolinecolor="#424242", zerolinewidth=1.5,
+            gridcolor="#F0F0F0",
+        ),
+        margin=dict(t=55, b=90, l=70, r=80),
     )
     return fig
 
@@ -713,9 +820,9 @@ def _render_bronze(df: pd.DataFrame):
 
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Score Global de Calidad")
-        st.caption("Puntaje agregado 0–100. Ref: ≥80% es aceptable (línea azul). El delta muestra la distancia al umbral.")
-        st.plotly_chart(_gauge(score, "Bronze", C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
+        st.subheader("Score Global de Calidad — Gráfico de Bala")
+        st.caption("Bullet chart: barra = score actual; línea azul = meta 80%; bandas = rangos de calidad (rojo crítico, naranja aceptable, verde óptimo).")
+        st.plotly_chart(_bullet(score, "Bronze — Score de Calidad", C_BRONZE, C_BRONZE_LIGHT), use_container_width=True)
     with c2:
         st.subheader("Calidad por Familia de Tipo")
         st.caption("¿Qué tipo de datos concentra más nulos? Ayuda a priorizar la estrategia de imputación en Silver.")
@@ -735,7 +842,7 @@ def _render_bronze(df: pd.DataFrame):
     with c3:
         st.subheader("Valores Atípicos (Outliers IQR)")
         st.caption("Cantidad de registros fuera del rango IQR×1.5. Pueden ser errores de captura o casos extremos reales — ambos afectan modelos lineales.")
-        fig_out = _outlier_funnel(df, C_BRONZE, C_BRONZE_LIGHT)
+        fig_out = _outlier_bar(df, C_BRONZE, C_BRONZE_LIGHT)
         if fig_out:
             st.plotly_chart(fig_out, use_container_width=True)
         else:
@@ -782,9 +889,9 @@ def _render_silver(df: pd.DataFrame, df_bronze):
 
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Score Global de Calidad")
-        st.caption("¿Superamos el umbral mínimo tras la limpieza? ≥80% es la meta. El delta indica si mejoramos respecto a Bronze.")
-        st.plotly_chart(_gauge(score_s, "Silver", C_SILVER, C_SILVER_LIGHT), use_container_width=True)
+        st.subheader("Score Global de Calidad — Gráfico de Bala")
+        st.caption("Bullet chart: barra = score actual; línea azul = meta 80%; bandas = rangos de calidad. ¿Superamos el umbral tras la limpieza?")
+        st.plotly_chart(_bullet(score_s, "Silver — Score de Calidad", C_SILVER, C_SILVER_LIGHT), use_container_width=True)
     with c2:
         st.subheader("Calidad por Familia de Tipo")
         st.caption("Tras la limpieza, ¿qué familia de tipos aún acumula nulos? Si un tipo persiste en rojo, revisar la estrategia de imputación.")
@@ -837,9 +944,9 @@ def _render_gold(df: pd.DataFrame):
 
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Score Global de Calidad")
-        st.caption("Score final del dataset de modelado. ≥80% es el umbral mínimo para iniciar entrenamiento sin riesgo de sesgo por nulos.")
-        st.plotly_chart(_gauge(score_g, "Gold", C_GOLD, C_GOLD_LIGHT), use_container_width=True)
+        st.subheader("Score Global de Calidad — Gráfico de Bala")
+        st.caption("Bullet chart: barra = score actual; línea azul = meta 80%. ≥80% es el umbral mínimo para iniciar entrenamiento sin riesgo de sesgo por nulos.")
+        st.plotly_chart(_bullet(score_g, "Gold — Score de Calidad", C_GOLD, C_GOLD_LIGHT), use_container_width=True)
     with c2:
         st.subheader("Asimetría de Features Numéricos")
         st.caption("Rojo (|skew|>2): aplicar log/Box-Cox antes de modelos lineales o KNN. Naranja (|skew|>1): recomendable. Verde: distribución aceptable sin transformar.")
@@ -898,17 +1005,17 @@ def _render_comparison(df_bronze: pd.DataFrame, df_silver: pd.DataFrame):
         f"Existen {len(common)} campos comunes comparables entre ambas capas."
     )
 
-    st.subheader("Radar de Completitud por Campo (Bronze vs Silver)")
-    st.caption("Radio más largo = menos nulos. El área de Silver debería envolver a Bronze. Campos donde Bronze supera a Silver indican regresión en la limpieza.")
-    fig_radar = _completeness_radar(df_bronze, df_silver)
-    if fig_radar:
-        st.plotly_chart(fig_radar, use_container_width=True)
+    st.subheader("Gráfico de Pendientes — Completitud por Campo (Bronze → Silver)")
+    st.caption("Cada línea conecta el mismo campo en Bronze (izq.) y Silver (der.). Verde = mejoró. Rojo = empeoró. Las líneas más opacas indican cambios mínimos (<5 pp). Campos etiquetados tienen variación >10 pp.")
+    fig_slope = _completeness_slope(df_bronze, df_silver)
+    if fig_slope:
+        st.plotly_chart(fig_slope, use_container_width=True)
 
-    st.subheader("Reducción de Nulidad por Campo (Bronze → Silver)")
-    st.caption("Magnitud del cambio en puntos porcentuales. Verde = el campo mejoró en Silver. Rojo = regresión (más nulos que en Bronze) — requiere revisión del job.")
-    fig_wf = _improvement_waterfall(df_bronze, df_silver)
-    if fig_wf:
-        st.plotly_chart(fig_wf, use_container_width=True)
+    st.subheader("Barras Divergentes — Reducción de Nulidad (Bronze → Silver)")
+    st.caption("Desviación desde 0: barras hacia arriba (verde) = campo mejoró (menos nulos en Silver). Barras hacia abajo (rojo) = regresión. Ordenado de mayor mejora a mayor regresión.")
+    fig_div = _improvement_diverging_bar(df_bronze, df_silver)
+    if fig_div:
+        st.plotly_chart(fig_div, use_container_width=True)
 
     st.subheader("Dispersión de Nulidad: Bronze (X) vs Silver (Y)")
     st.caption("Puntos bajo la diagonal (y < x) = campo mejoró. Sobre la diagonal = empeoró. Sobre el eje x = campo sin nulos en Bronze que los ganó en Silver.")
@@ -1073,13 +1180,13 @@ def render_quality_section():
 
     g1, g2, g3 = st.columns(3)
     with g1:
-        st.plotly_chart(_gauge(score_b, "🟤 Bronze — Score Calidad", C_BRONZE, C_BRONZE_LIGHT),
+        st.plotly_chart(_bullet(score_b, "🟤 Bronze — Score Calidad", C_BRONZE, C_BRONZE_LIGHT),
                         use_container_width=True)
     with g2:
-        st.plotly_chart(_gauge(score_s, "🔘 Silver — Score Calidad", C_SILVER, C_SILVER_LIGHT),
+        st.plotly_chart(_bullet(score_s, "🔘 Silver — Score Calidad", C_SILVER, C_SILVER_LIGHT),
                         use_container_width=True)
     with g3:
-        st.plotly_chart(_gauge(score_g, "🥇 Gold — Score Calidad", C_GOLD, C_GOLD_LIGHT),
+        st.plotly_chart(_bullet(score_g, "🥇 Gold — Score Calidad", C_GOLD, C_GOLD_LIGHT),
                         use_container_width=True)
 
     st.divider()
