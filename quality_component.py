@@ -559,86 +559,122 @@ def _corr_heatmap(df_data: pd.DataFrame, title: str, bg: str = "white") -> go.Fi
     return fig
 
 
-def _cardinality_completeness_scatter(df_meta: pd.DataFrame, layer_color: str, title: str) -> go.Figure | None:
-    """Scatter plot (Vocabulario Visual: Correlación) — Cardinalidad (X) vs. Completitud (Y).
-    Cada punto es un campo. Permite ver si los campos con más valores únicos
-    también tienden a tener más nulos (correlación negativa = problema sistémico).
-    Cuadrante superior-derecho = alta cardinalidad Y alta completitud (ideal).
-    Cuadrante inferior-derecho = alta cardinalidad PERO muchos nulos (prioritario)."""
+def _cardinality_completeness_dotplot(df_meta: pd.DataFrame, layer_color: str, title: str) -> go.Figure | None:
+    """Dot plot tipo lollipop ordenado (Vocabulario Visual: Ranking).
+    Los campos se ordenan de menor a mayor completitud.
+    Punto = campo. Color = semáforo de calidad. Tamaño = bucket de cardinalidad.
+    El usuario puede ver de un vistazo qué campos tienen problemas y cuántos valores únicos manejan."""
     if "nulos_pct" not in df_meta.columns or "unicos_n" not in df_meta.columns:
         return None
     df = df_meta[["columna", "nulos_pct", "unicos_n"]].copy()
     df["completitud"] = (100 - df["nulos_pct"]).clip(0, 100)
+    df = df.sort_values("completitud", ascending=True).reset_index(drop=True)
 
-    def _point_color(row):
-        if row["completitud"] >= 90:
-            return C_SUCCESS
-        if row["completitud"] >= 60:
-            return C_WARNING
+    # Bucket de cardinalidad → tamaño del punto (4 niveles)
+    q25 = df["unicos_n"].quantile(0.25)
+    q50 = df["unicos_n"].quantile(0.50)
+    q75 = df["unicos_n"].quantile(0.75)
+
+    def _size(v):
+        if v <= q25:  return 10
+        if v <= q50:  return 16
+        if v <= q75:  return 22
+        return 30
+
+    def _card_label(v):
+        if v <= q25:   return f"{v:,} únicos — baja cardinalidad"
+        if v <= q50:   return f"{v:,} únicos — media"
+        if v <= q75:   return f"{v:,} únicos — alta"
+        return f"{v:,} únicos — muy alta"
+
+    def _color(c):
+        if c >= 90:   return C_SUCCESS
+        if c >= 60:   return C_WARNING
         return C_DANGER
 
-    df["color"] = df.apply(_point_color, axis=1)
+    df["punto_size"]  = df["unicos_n"].apply(_size)
+    df["card_label"] = df["unicos_n"].apply(_card_label)
+    df["color"]      = df["completitud"].apply(_color)
 
+    h = max(380, len(df) * 28)
     fig = go.Figure()
 
-    # Cuadrantes de referencia
-    x_mid = df["unicos_n"].median()
-    fig.add_vline(x=x_mid, line_dash="dot", line_color=C_MUTED, line_width=1,
-                  annotation_text="Mediana cardinalidad",
-                  annotation_position="top right",
-                  annotation_font=dict(size=9, color=C_MUTED))
-    fig.add_hline(y=80, line_dash="dot", line_color=C_INFO, line_width=1.5,
-                  annotation_text="Meta completitud 80%",
-                  annotation_position="right",
-                  annotation_font=dict(size=9, color=C_INFO))
-
-    # Puntos del scatter
+    # Líneas de guía (tallo del lollipop)
     for _, row in df.iterrows():
+        fig.add_shape(
+            type="line",
+            x0=0, x1=float(row["completitud"]),
+            y0=row["columna"], y1=row["columna"],
+            line=dict(color="#E8E8E8", width=1.5),
+        )
+
+    # Un trace por grupo de color (para leyenda limpia)
+    for color_val, label in [
+        (C_DANGER,  "< 60% — crítico"),
+        (C_WARNING, "60 – 89% — revisar"),
+        (C_SUCCESS, "≥ 90% — aceptable"),
+    ]:
+        sub = df[df["color"] == color_val]
+        if sub.empty:
+            continue
         fig.add_trace(go.Scatter(
-            x=[row["unicos_n"]],
-            y=[row["completitud"]],
-            mode="markers+text",
-            marker=dict(size=10, color=row["color"],
-                        line=dict(width=1, color="white")),
-            text=[row["columna"]],
-            textposition="top center",
-            textfont=dict(size=8, family=FONT),
-            name=row["columna"],
-            showlegend=False,
-            hovertemplate=(
-                f"<b>{row['columna']}</b><br>"
-                f"Cardinalidad: {row['unicos_n']:,} valores únicos<br>"
-                f"Completitud: {row['completitud']:.1f}%<br>"
-                f"Nulidad: {row['nulos_pct']:.1f}%<extra></extra>"
+            x=sub["completitud"],
+            y=sub["columna"],
+            mode="markers",
+            name=label,
+            marker=dict(
+                size=sub["punto_size"].tolist(),
+                color=color_val,
+                opacity=0.88,
+                line=dict(width=1.5, color="white"),
             ),
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "Completitud: <b>%{x:.1f}%</b><br>"
+                "%{customdata}<extra></extra>"
+            ),
+            customdata=sub["card_label"].tolist(),
         ))
 
-    # Leyenda manual de colores
-    for label, color in [("≥90% completo", C_SUCCESS), ("60–89%", C_WARNING), ("<60% (crítico)", C_DANGER)]:
+    # Línea meta 80%
+    fig.add_vline(x=80, line_dash="dash", line_color=C_INFO, line_width=2,
+                  annotation_text="Meta 80%",
+                  annotation_position="top",
+                  annotation_font=dict(size=10, color=C_INFO))
+
+    # Leyenda de tamaños (cardinalidad)
+    for sz, lbl in [(10, "Baja cardinalidad"), (16, "Media"), (22, "Alta"), (30, "Muy alta")]:
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
-            marker=dict(size=10, color=color),
-            name=label, showlegend=True,
+            marker=dict(size=sz, color="#9E9E9E", opacity=0.6,
+                        line=dict(width=1, color="white")),
+            name=lbl, showlegend=True,
         ))
 
     _apply_base(fig,
         title=dict(text=title, font=dict(size=13, color=C_TEXT, family=FONT), x=0),
-        height=460,
+        height=h,
         paper_bgcolor="white", plot_bgcolor="white",
         xaxis=dict(
-            title="Cardinalidad — N° de valores únicos",
+            title="Completitud — % de filas sin nulos",
+            range=[-2, 108], ticksuffix="%",
             gridcolor="#F0F0F0", tickfont=dict(size=10),
-            type="log",  # escala logarítmica para campos con rangos muy distintos
-            title_font=dict(size=11),
         ),
         yaxis=dict(
-            title="Completitud (%)",
-            range=[-5, 108], ticksuffix="%",
-            gridcolor="#F0F0F0", tickfont=dict(size=10),
-            title_font=dict(size=11),
+            categoryorder="array",
+            categoryarray=df["columna"].tolist(),
+            tickfont=dict(size=10),
+            gridcolor="#F5F5F5",
+            title="Campo",
         ),
-        legend=dict(orientation="h", y=-0.18, x=0, font=dict(size=10)),
-        margin=dict(t=55, b=80, l=80, r=30),
+        legend=dict(
+            orientation="h", y=-0.14, x=0, font=dict(size=10),
+            title=dict(
+                text="Color = nivel de calidad  |  Tamaño del punto = cardinalidad",
+                font=dict(size=9, color=C_MUTED),
+            ),
+        ),
+        margin=dict(t=55, b=100, l=190, r=40),
     )
     return fig
 
@@ -883,11 +919,11 @@ def _render_bronze(df: pd.DataFrame):
     st.caption("% de filas vacías por campo. Naranja (10%): revisar. Rojo (30%): imputar o descartar. Verde: aceptable.")
     st.plotly_chart(_nullity_hbar(df, C_BRONZE, C_BRONZE_LIGHT, ""), use_container_width=True)
 
-    st.subheader("Cardinalidad vs. Completitud por Campo")
-    st.caption("Scatter plot (correlación): X = nº de valores únicos (escala log), Y = % completitud. Cuadrante inferior-derecho = alta cardinalidad con muchos nulos → prioridad de limpieza. Línea azul = meta 80%.")
-    fig_scatter = _cardinality_completeness_scatter(df, C_BRONZE, "Cardinalidad vs. Completitud — Bronze")
-    if fig_scatter:
-        st.plotly_chart(fig_scatter, use_container_width=True)
+    st.subheader("Ranking de Completitud por Campo")
+    st.caption("▼ Orden ascendente: los campos más problemáticos aparecen primero. Color = calidad (rojo crítico / naranja revisar / verde aceptable). Tamaño del punto = cardinalidad (más grande = más valores únicos). Línea azul = meta 80%.")
+    fig_dot = _cardinality_completeness_dotplot(df, C_BRONZE, "Completitud por Campo — Bronze")
+    if fig_dot:
+        st.plotly_chart(fig_dot, use_container_width=True)
 
     c3, c4 = st.columns(2)
     with c3:
@@ -952,11 +988,11 @@ def _render_silver(df: pd.DataFrame, df_bronze):
     st.caption("Naranja (10%): aún requiere atención. Rojo (30%): campo problemático para modelos. Comparar con Bronze para ver la mejora.")
     st.plotly_chart(_nullity_hbar(df, C_SILVER, C_SILVER_LIGHT, ""), use_container_width=True)
 
-    st.subheader("Cardinalidad vs. Completitud por Campo")
-    st.caption("Scatter plot (correlación): X = nº de valores únicos (escala log), Y = % completitud. Campos en el cuadrante inferior-derecho tras la limpieza Silver son candidatos a descarte o feature engineering adicional.")
-    fig_scatter = _cardinality_completeness_scatter(df, C_SILVER, "Cardinalidad vs. Completitud — Silver")
-    if fig_scatter:
-        st.plotly_chart(fig_scatter, use_container_width=True)
+    st.subheader("Ranking de Completitud por Campo")
+    st.caption("▼ Orden ascendente: los campos más problemáticos aparecen primero. Compara con Bronze: campos que siguen en rojo tras la limpieza Silver son candidatos a descarte o feature engineering adicional.")
+    fig_dot = _cardinality_completeness_dotplot(df, C_SILVER, "Completitud por Campo — Silver")
+    if fig_dot:
+        st.plotly_chart(fig_dot, use_container_width=True)
 
     st.subheader("Cardinalidad por Campo")
     st.caption("Campos de muy alta cardinalidad en Silver podrían necesitar encoding especial (target encoding, hashing) antes del modelado.")
