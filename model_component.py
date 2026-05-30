@@ -109,9 +109,7 @@ def _chart_feature_importance(df: pd.DataFrame, top_n: int = 15):
 
 
 def _chart_roc(df_roc: pd.DataFrame, df_fiscal: pd.DataFrame):
-    """Línea ROC con punto del threshold elegido."""
-    thr = float(df_fiscal["threshold"].iloc[0]) if not df_fiscal.empty else None
-
+    """Línea ROC."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df_roc["fpr"], y=df_roc["tpr"],
@@ -123,12 +121,6 @@ def _chart_roc(df_roc: pd.DataFrame, df_fiscal: pd.DataFrame):
         x=[0, 1], y=[0, 1], mode="lines", name="Aleatorio",
         line=dict(color=C_GRAY, dash="dot", width=1.5),
     ))
-    if thr is not None:
-        row = df_roc.iloc[(df_roc["threshold"] - thr).abs().argsort()[:1]]
-        fig.add_trace(go.Scatter(
-            x=row["fpr"], y=row["tpr"], mode="markers", name=f"Threshold = {thr:.2f}",
-            marker=dict(color=C_GOLD, size=12, symbol="diamond"),
-        ))
     fig.update_layout(
         plot_bgcolor=C_BG, paper_bgcolor="white",
         xaxis=dict(title="FPR (1 - Especificidad)", range=[0, 1], gridcolor="#E2E8F0"),
@@ -141,7 +133,6 @@ def _chart_roc(df_roc: pd.DataFrame, df_fiscal: pd.DataFrame):
 
 def _chart_pr(df_pr: pd.DataFrame, df_fiscal: pd.DataFrame):
     """Curva Precision-Recall."""
-    thr = float(df_fiscal["threshold"].iloc[0]) if not df_fiscal.empty else None
     df_clean = df_pr.dropna()
 
     fig = go.Figure()
@@ -229,13 +220,14 @@ def _chart_generalizacion(df: pd.DataFrame):
 
 def _chart_fiscal(df: pd.DataFrame):
     """Barras divergentes centradas en cero: pérdida (rojo) vs ahorro (verde)."""
-    row = df.iloc[0]
+    def _val(esc): 
+        r = df[df["escenario"] == esc]["perdida_usd"]
+        return float(r.iloc[0]) if not r.empty else 0.0
+    multa_total = _val("Sin modelo (todo incumple)")
+    perdida     = _val("Con modelo final")
+    ahorro      = _val("Ahorro estimado")
     categorias = ["Multas Totales", "Pérdida\n(Falsos Neg.)", "Ahorro\n(Verdaderos Pos.)"]
-    valores    = [
-        float(row["multa_total_usd"]),
-        -float(row["perdida_usd"]),
-         float(row["ahorro_usd"]),
-    ]
+    valores    = [multa_total, -perdida, ahorro]
     colores = [C_GRAY, C_RED, C_GREEN]
 
     fig = go.Figure(go.Bar(
@@ -271,13 +263,15 @@ def render_model_section():
     # ── KPIs rápidos ──────────────────────────────────────────────────────
     if _check(df_metricas, "métricas") and _check(df_fiscal, "resumen fiscal"):
         final = df_metricas[df_metricas["es_final"] == True].iloc[0]
-        fsc   = df_fiscal.iloc[0]
 
         k1, k2, k3, k4 = st.columns(4)
+        def _fsc_val(esc):
+            r = df_fiscal[df_fiscal["escenario"] == esc]["perdida_usd"]
+            return float(r.iloc[0]) if not r.empty else 0.0
         k1.metric("PR-AUC (final)", f"{final['pR_AUC']:.3f}")
         k2.metric("ROC-AUC (final)", f"{final['roc_AUC']:.3f}")
         k3.metric("Recall", f"{final['recall']:.1%}")
-        k4.metric("Ahorro Fiscal", f"${float(fsc['ahorro_usd'])/1e6:.1f}M USD")
+        k4.metric("Ahorro Fiscal", f"${_fsc_val('Ahorro estimado')/1e6:.1f}M USD")
 
         st.divider()
 
