@@ -268,26 +268,32 @@ def _chart_radar(df: pd.DataFrame):
     metricas_r = ["pR_AUC", "roc_AUC", "f1", "recall", "precision"]
     labels_r   = ["PR-AUC", "ROC-AUC", "F1", "Recall", "Precision"]
 
-    # Seleccionar: modelo final + 3 competidores relevantes
     candidatos = ["Modelo Final (test)", "RF + cw (v2)", "XGBoost + spw", "Logistic Reg."]
     df_sel = df[df["modelo"].isin(candidatos)].copy()
     if df_sel.empty:
-        # fallback: top 4 por PR-AUC
         df_sel = df.nlargest(4, "pR_AUC")
 
+    palette_fill = [
+        "rgba(192,41,43,0.15)",
+        "rgba(43,108,176,0.15)",
+        "rgba(30,77,43,0.15)",
+        "rgba(217,119,6,0.15)",
+        "rgba(113,128,150,0.15)",
+    ]
+    palette_line = [C_RED, C_BLUE, C_GREEN, C_ORANGE, C_GRAY]
+
     fig = go.Figure()
-    palette = [C_RED, C_BLUE, C_GREEN, C_ORANGE, C_GRAY]
     for i, (_, row) in enumerate(df_sel.iterrows()):
         vals = [float(row.get(m, 0)) for m in metricas_r]
-        vals_closed = vals + [vals[0]]  # cerrar el polígono
+        vals_closed = vals + [vals[0]]
         fig.add_trace(go.Scatterpolar(
             r=vals_closed,
             theta=labels_r + [labels_r[0]],
             fill="toself",
-            fillcolor=palette[i % len(palette)].replace(")", ", 0.10)").replace("rgb", "rgba") if palette[i].startswith("rgb") else palette[i] + "1A",
-            line=dict(color=palette[i % len(palette)], width=2),
+            fillcolor=palette_fill[i % len(palette_fill)],
+            line=dict(color=palette_line[i % len(palette_line)], width=2),
             name=row["modelo"],
-            opacity=1.0 if row.get("es_final") else 0.75,
+            opacity=1.0 if row.get("es_final") else 0.85,
         ))
     fig.update_layout(
         polar=dict(
