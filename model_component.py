@@ -316,16 +316,15 @@ def render_model_section():
     with t4:
         st.subheader("Matriz de Confusión — conjunto test")
         if _check(df_cm, "matriz de confusión"):
-            thr_val = float(df_fiscal["threshold"].iloc[0]) if (df_fiscal is not None and not df_fiscal.empty) else "—"
-            st.caption(f"Threshold aplicado: **{thr_val:.2f}**")
+            st.caption("Threshold aplicado: **0.50**")
             c_cm, c_exp = st.columns([1, 1])
             with c_cm:
                 st.plotly_chart(_chart_confusion(df_cm), use_container_width=True)
             with c_exp:
-                tn = df_cm[(df_cm["real"].str.contains("Cumple")) & (df_cm["predicho"].str.contains("Cumple"))]["n"].sum()
-                fp = df_cm[(df_cm["real"].str.contains("Cumple")) & (df_cm["predicho"].str.contains("Incumple"))]["n"].sum()
-                fn = df_cm[(df_cm["real"].str.contains("Incumple")) & (df_cm["predicho"].str.contains("Cumple"))]["n"].sum()
-                tp = df_cm[(df_cm["real"].str.contains("Incumple")) & (df_cm["predicho"].str.contains("Incumple"))]["n"].sum()
+                tn = int(df_cm[(df_cm["real"] == 0) & (df_cm["predicho"] == 0)]["count"].sum())
+                fp = int(df_cm[(df_cm["real"] == 0) & (df_cm["predicho"] == 1)]["count"].sum())
+                fn = int(df_cm[(df_cm["real"] == 1) & (df_cm["predicho"] == 0)]["count"].sum())
+                tp = int(df_cm[(df_cm["real"] == 1) & (df_cm["predicho"] == 1)]["count"].sum())
                 total = tn + fp + fn + tp
                 st.markdown(f"""
 | Cuadrante | Valor | Interpretación |
@@ -341,11 +340,11 @@ def render_model_section():
         with col_f:
             st.subheader("Impacto Fiscal (conjunto test)")
             if _check(df_fiscal, "resumen fiscal"):
-                row = df_fiscal.iloc[0]
-                st.caption(
-                    f"Exposición evitada: **{float(row['pct_exposicion']):.1f}%**  ·  "
-                    f"Pérdida residual: **${float(row['perdida_usd'])/1e6:.1f}M**"
-                )
+                def _fv(esc): 
+                    r = df_fiscal[df_fiscal["escenario"] == esc]["perdida_usd"]
+                    return float(r.iloc[0]) if not r.empty else 0.0
+                perdida = _fv("Con modelo final")
+                st.caption(f"Pérdida residual: **${perdida/1e6:.1f}M USD**")
                 st.plotly_chart(_chart_fiscal(df_fiscal), use_container_width=True)
         with col_g:
             st.subheader("Generalización: Validación → Test")
