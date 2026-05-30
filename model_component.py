@@ -9,7 +9,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from s3_utils import load_from_s3
+from s3_utils import load_parquet_from_s3
 
 # ── Paleta ──────────────────────────────────────────────────────────────────
 C_RED    = "#C0292B"
@@ -35,7 +35,7 @@ PREFIX = "gold_v2/model_results/"
 # ── Carga de datos ──────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def _load(name: str) -> pd.DataFrame | None:
-    return load_from_s3(prefix=PREFIX + name)
+    return load_parquet_from_s3(key=PREFIX + name + ".parquet")
 
 
 def _check(df, name):

@@ -60,3 +60,16 @@ def load_from_s3(prefix: str, bucket: str = "proyect-ny311") -> pd.DataFrame | N
     except Exception as e:
         st.error(f"Error cargando datos de {prefix}: {str(e)}")
         return None
+
+
+@st.cache_data(ttl=3600)
+def load_parquet_from_s3(key: str, bucket: str = "proyect-ny311") -> pd.DataFrame | None:
+    """Carga un único archivo .parquet desde S3 usando la clave exacta."""
+    try:
+        s3 = get_s3_client()
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        content = obj['Body'].read()
+        return pd.read_parquet(io.BytesIO(content), engine='pyarrow')
+    except Exception as e:
+        st.warning(f"No se encontró objeto en s3://{bucket}/{key}: {str(e)}")
+        return None
