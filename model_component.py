@@ -142,13 +142,6 @@ def _chart_pr(df_pr: pd.DataFrame, df_fiscal: pd.DataFrame):
         line=dict(color=C_BLUE, width=2.5),
         fill="tozeroy", fillcolor="rgba(43,108,176,0.08)",
     ))
-    if thr is not None:
-        row = df_clean.iloc[(df_clean["threshold"] - thr).abs().argsort()[:1]]
-        fig.add_trace(go.Scatter(
-            x=row["recall"], y=row["precision"], mode="markers",
-            name=f"Threshold = {thr:.2f}",
-            marker=dict(color=C_GOLD, size=12, symbol="diamond"),
-        ))
     fig.update_layout(
         plot_bgcolor=C_BG, paper_bgcolor="white",
         xaxis=dict(title="Recall", range=[0, 1], gridcolor="#E2E8F0"),
@@ -161,7 +154,7 @@ def _chart_pr(df_pr: pd.DataFrame, df_fiscal: pd.DataFrame):
 
 def _chart_confusion(df: pd.DataFrame):
     """Heatmap de la matriz de confusión."""
-    pivot = df.pivot(index="real", columns="predicho", values="n").fillna(0)
+    pivot = df.pivot(index="real", columns="predicho", values="count").fillna(0)
     labels_r = pivot.index.tolist()
     labels_c = pivot.columns.tolist()
     z = pivot.values
