@@ -178,26 +178,21 @@ def _chart_confusion(df: pd.DataFrame):
 
 
 def _chart_generalizacion(df: pd.DataFrame):
-    """Slope chart: val → test por métrica (Vocabulario: Cambio entre dos puntos)."""
-    metricas = df["metrica"].unique().tolist()
-    df_val  = df[df["split"] == "val"].set_index("metrica")["valor"]
-    df_test = df[df["split"] == "test"].set_index("metrica")["valor"]
-
+    """Slope chart: val → test por métrica. Schema: {metrica, val, test}."""
     fig = go.Figure()
-    for met in metricas:
-        v_val  = df_val.get(met, None)
-        v_test = df_test.get(met, None)
-        if v_val is None or v_test is None:
-            continue
-        delta = v_test - v_val
-        color = C_GREEN if delta >= 0 else C_RED
+    for _, row in df.iterrows():
+        met    = row["metrica"]
+        v_val  = float(row["val"])
+        v_test = float(row["test"])
+        delta  = v_test - v_val
+        color  = C_GREEN if delta >= 0 else C_RED
         fig.add_trace(go.Scatter(
             x=["Validación", "Test"], y=[v_val, v_test],
             mode="lines+markers+text",
             name=met,
             line=dict(color=color, width=2),
             marker=dict(size=9, color=color),
-            text=["", f"{v_test:.3f}"],
+            text=[f"{v_val:.3f}", f"{v_test:.3f}"],
             textposition="middle right",
         ))
     fig.update_layout(
