@@ -269,7 +269,7 @@ def _chart_confusion(df_cm: pd.DataFrame) -> go.Figure:
         hovertemplate="Real=%{y} | Pred=%{x}<br>N=%{z:,}<extra></extra>",
     ))
     # Etiquetas de cuadrante (VN / FP / FN / VP)
-    for (ri, ci), etiq, col in [
+    for ri, ci, etiq, col in [
         (0, 0, "VN", C_GREEN), (0, 1, "FP", C_ORANGE),
         (1, 0, "FN", C_RED),   (1, 1, "VP", C_GREEN),
     ]:
@@ -503,12 +503,10 @@ def render_model_section():
             ahorro  = _fsc(df_fiscal, "Ahorro estimado")
             pct_ah  = ahorro / multa if multa > 0 else 0
             st.subheader("Impacto Fiscal — Waterfall")
-            st.caption(f"Cascada: exposición total → ahorro logrado ({pct_ah:.0%}) → pérdida residual (FN).")
+            st.caption(f"Cascada: exposición total → ahorro logrado ({pct_ah:.0%}).")
             st.plotly_chart(_chart_waterfall(df_fiscal), use_container_width=True)
-            m1, m2, m3 = st.columns(3)
+            m1, m2 = st.columns(2)
             m1.metric("Exposición total", f"${multa/1e6:.1f}M", "sin modelo")
             m2.metric("Ahorro con modelo", f"${ahorro/1e6:.1f}M",
                       f"+{pct_ah:.0%} recuperado")
-            m3.metric("Pérdida residual", f"${perdida/1e6:.1f}M",
-                      f"{perdida/multa:.0%} restante", delta_color="inverse")
 
