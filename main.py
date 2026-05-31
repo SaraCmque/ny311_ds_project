@@ -1,15 +1,31 @@
 import streamlit as st
+# 1. Añadimos las importaciones de utilidades de datos y del nuevo componente
+from s3_utils import load_from_s3 
 from quality_component import render_quality_section
 from charts_component import render_dynamic_charts
 from model_component import render_model_section
-
+from map_component import render_map_section 
 
 st.set_page_config(page_title="NYC 311 Healthcheck", layout="wide")
 st.title("NYC 311: Dashboard de Calidad de Datos y Estadísticas")
 
-tab_calidad, tab_graficas, tab_modelo = st.tabs([
+@st.cache_data
+def get_gold_map_data():
+    try:
+        df_gold = load_from_s3("gold/visualization/")
+        if df_gold is not None and not df_gold.empty:
+            return df_gold.dropna(subset=["latitude", "longitude"])
+        return None
+    except Exception as e:
+        st.error(f"Error al conectar con la capa Gold en S3: {e}")
+        return None
+
+df_gold_map = get_gold_map_data()
+
+tab_calidad, tab_graficas, tab_mapa, tab_modelo = st.tabs([
     "✅ Control de Calidad",
     "📈 Gráficas Dinámicas",
+    "🗺️ Georreferenciación (Gold)", # <-- Nueva pestaña
     "🤖 Modelo Predictivo",
 ])
 
@@ -18,6 +34,12 @@ with tab_calidad:
 
 with tab_graficas:
     render_dynamic_charts()
+
+with tab_mapa:
+    if df_gold_map is not None:
+        render_map_section(df_gold_map)
+    else:
+        st.warning("No se pudo estructurar el mapa porque los datos de la capa Gold están ausentes o vacíos.")
 
 with tab_modelo:
     render_model_section()
