@@ -12,7 +12,7 @@ st.title("NYC 311: Dashboard de Calidad de Datos y Estadísticas")
 @st.cache_data
 def get_gold_map_data():
     try:
-        df_gold = load_from_s3("gold/visualization/")
+        df_gold = load_from_s3("gold/visualizations/")
         if df_gold is not None and not df_gold.empty:
             return df_gold.dropna(subset=["latitude", "longitude"])
         return None
