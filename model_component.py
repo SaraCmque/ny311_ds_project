@@ -28,19 +28,18 @@ C_BG     = "#F7F8FA"
 C_GRID   = "#E2E8F0"
 
 _MODEL_COLOR = {
-    "Dummy Stratified":    C_LIGHT,
-    "Dummy Majority":      C_LIGHT,
-    "Dummy Constant1":     C_LIGHT,
-    "Logistic Reg.":       C_ORANGE,
-    "LR + class_weight":   C_ORANGE,
-    "Random Forest":       C_BLUE,
-    "RF + class_weight":   C_BLUE,
-    "RF + cw (v2)":        C_BLUE,
-    "XGBoost":             C_GREEN,
-    "XGBoost + spw":       C_GREEN,
-    "XGB + spw (v2)":      C_GREEN,
-    "XGB sin bal. (v2)":   C_GREEN,
-    "Modelo Final (test)": C_RED,
+    "Dummy stratified":    C_LIGHT,
+    "Dummy most frequent": C_LIGHT,
+    "Dummy constant":      C_LIGHT,
+    "LR (base)":           C_ORANGE,
+    "LR + cw":             C_ORANGE,
+    "RF (base)":           C_BLUE,
+    "RF + cw":             C_BLUE,
+    "RF + cw (28 feat)":   C_BLUE,
+    "XGB (base)":          C_GREEN,
+    "XGB + spw":           C_GREEN,
+    "XGB + spw (28 feat)": C_GREEN,
+    "Modelo Final (Test)": C_RED,
 }
 
 PREFIX = "gold_v2/model_results/"
