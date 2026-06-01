@@ -22,11 +22,10 @@ def get_gold_map_data():
 
 df_gold_map = get_gold_map_data()
 
-tab_calidad, tab_modelo, tab_graficas, tab_mapa = st.tabs([
+tab_calidad, tab_modelo, tab_graficas = st.tabs([
     "✅ Control de Calidad",
     "🤖 Modelo Predictivo",
     "📊 Componente de Visualización",
-    "🗺️ Georreferenciación (Gold)",
 ])
 
 with tab_calidad:
@@ -37,8 +36,7 @@ with tab_modelo:
 
 with tab_graficas:
     render_dynamic_charts()
-
-with tab_mapa:
+    st.divider()
     if df_gold_map is not None:
         render_map_section(df_gold_map)
     else:
