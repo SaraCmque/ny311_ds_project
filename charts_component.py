@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from s3_utils import load_from_s3
 
 def render_dynamic_charts():
@@ -16,8 +15,6 @@ def render_dynamic_charts():
     # Paleta de Colores "Ingeniería de la Atención"
     COLOR_FOCO = "#C0292B"   # Rojo: Incumplimiento
     COLOR_NEUTRO = "#718096" # Gris: Contexto
-    COLOR_DINERO = "#1E4D2B" # Verde: Éxito
-    COLOR_ACUMULADO = "#2B6CB0" # Azul para Pareto
 
     # PROCESAMIENTO
     df_work = df_raw[df_raw['resolution_time_days'].notna()].copy()
@@ -61,7 +58,11 @@ def render_dynamic_charts():
     fig_hist.add_vline(x=sla_oficial, line_dash="dash", line_color=COLOR_FOCO, line_width=3)
     
     # CORRECCIÓN AQUÍ: Se eliminó barcode_mode y se dejó barmode (que es la propiedad real)
-    fig_hist.update_layout(plot_bgcolor="white", barmode='overlay') 
+    fig_hist.update_layout(
+        plot_bgcolor="white", barmode='overlay',
+        xaxis_title="Días Hábiles de Resolución",
+        yaxis_title="Volumen de Incidentes Reportados"
+    )
     st.plotly_chart(fig_hist, use_container_width=True)
 
     # 4. MAGNITUD Y TIEMPO
@@ -71,7 +72,11 @@ def render_dynamic_charts():
         df_boro = df_work.groupby('Borough')['is_overdue_official'].mean().reset_index().sort_values('is_overdue_official')
         fig_boro = px.bar(df_boro, x='is_overdue_official', y='Borough', orientation='h')
         fig_boro.update_traces(marker_color=[COLOR_FOCO if r == df_boro['is_overdue_official'].max() else COLOR_NEUTRO for r in df_boro['is_overdue_official']])
-        fig_boro.update_layout(plot_bgcolor="white", xaxis_tickformat=".0%")
+        fig_boro.update_layout(
+            plot_bgcolor="white", xaxis_tickformat=".0%",
+            xaxis_title="Tasa de Incumplimiento de SLA",
+            yaxis_title="Distrito Administrativo"
+        )
         st.plotly_chart(fig_boro, use_container_width=True)
 
     with c2:
@@ -79,38 +84,14 @@ def render_dynamic_charts():
         df_hour = df_work.groupby('created_hour')['is_overdue_official'].mean().reset_index()
         fig_hour = px.area(df_hour, x='created_hour', y='is_overdue_official')
         fig_hour.update_traces(line_color=COLOR_FOCO, fillcolor="rgba(192, 41, 43, 0.2)")
-        fig_hour.update_layout(plot_bgcolor="white", yaxis_tickformat=".0%")
+        fig_hour.update_layout(
+            plot_bgcolor="white", yaxis_tickformat=".0%",
+            xaxis_title="Hora de Creación del Reporte (0–23 h)",
+            yaxis_title="Probabilidad de Incumplimiento"
+        )
         st.plotly_chart(fig_hour, use_container_width=True)
 
     st.divider()
-
-    # 5. ANÁLISIS ECONÓMICO (PARETO TOP 5)
-    st.subheader("3. Análisis de Responsabilidad Económica (Pareto)")
-    df_agency_money = df_overdue.groupby('Agency').agg(
-        pasivo_total=('estimated_liability_usd', 'sum')
-    ).reset_index().sort_values('pasivo_total', ascending=False)
-
-    top_5 = df_agency_money.head(5).copy()
-    total_p = df_agency_money['pasivo_total'].sum()
-    top_5['acum'] = (top_5['pasivo_total'].cumsum() / total_p)
-
-    fig_pareto = go.Figure()
-    fig_pareto.add_trace(go.Bar(
-        x=top_5['Agency'], y=top_5['pasivo_total'],
-        name="Pasivo USD", marker_color=COLOR_DINERO,
-        text=[f"${v/1e6:.1f}M" for v in top_5['pasivo_total']], textposition='outside'
-    ))
-    fig_pareto.add_trace(go.Scatter(
-        x=top_5['Agency'], y=top_5['acum'],
-        name="% Acumulado", line=dict(color=COLOR_ACUMULADO, width=4), yaxis="y2"
-    ))
-
-    fig_pareto.update_layout(
-        yaxis=dict(title="Dólares (USD)", showgrid=False),
-        yaxis2=dict(title="Acumulado", overlaying='y', side='right', range=[0, 1.1], tickformat=".0%"),
-        plot_bgcolor="white", showlegend=False, margin=dict(t=20)
-    )
-    st.plotly_chart(fig_pareto, use_container_width=True)
 
     # 6. MAPA
     st.subheader("4. Mapa de Focos de Negligencia")
