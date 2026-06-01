@@ -201,25 +201,6 @@ def render_map_section(df_all):
         st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
     with col_legend:
-        n_cumple = len(df[df["target"] == 0])
-        n_incumple = len(df[df["target"] == 1])
-        shape_html = f"""
-    <div class='legend-card' style='margin-bottom:12px'>
-       <h4>Forma · Resultado</h4>
-       <div class='leg-row' style='margin:8px 0'>
-         <svg width='14' height='14'><circle cx='7' cy='7' r='6' fill='#e0e4f0' opacity='.9'/></svg>
-         <span style='font-size:.82rem;color:#e0e4f0;flex:1'>Cumplió</span>
-         <span style='font-size:.75rem;color:#8891b3'>{n_cumple:,}</span>
-       </div>
-       <div class='leg-row' style='margin:8px 0'>
-         <svg width='14' height='14'><rect x='1' y='1' width='12' height='12' fill='#e0e4f0' opacity='.9' rx='1'/></svg>
-         <span style='font-size:.82rem;color:#e0e4f0;flex:1'>Incumplió</span>
-         <span style='font-size:.75rem;color:#8891b3'>{n_incumple:,}</span>
-       </div>
-    </div>
-    """
-        st.markdown(shape_html, unsafe_allow_html=True)
-
         agency_html = "<div class='legend-card'><h4>🏢 Agencias</h4>"
         for ag, col_hex in AGENCY_COLORS.items():
             if ag in (sel_agencies or all_agencies):
