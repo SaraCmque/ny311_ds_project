@@ -22,15 +22,18 @@ def get_gold_map_data():
 
 df_gold_map = get_gold_map_data()
 
-tab_calidad, tab_graficas, tab_mapa, tab_modelo = st.tabs([
+tab_calidad, tab_modelo, tab_graficas, tab_mapa = st.tabs([
     "✅ Control de Calidad",
-    "📈 Gráficas Dinámicas",
-    "🗺️ Georreferenciación (Gold)", # <-- Nueva pestaña
     "🤖 Modelo Predictivo",
+    "📊 Componente de Visualización",
+    "🗺️ Georreferenciación (Gold)",
 ])
 
 with tab_calidad:
     render_quality_section()
+
+with tab_modelo:
+    render_model_section()
 
 with tab_graficas:
     render_dynamic_charts()
@@ -40,6 +43,3 @@ with tab_mapa:
         render_map_section(df_gold_map)
     else:
         st.warning("No se pudo estructurar el mapa porque los datos de la capa Gold están ausentes o vacíos.")
-
-with tab_modelo:
-    render_model_section()
