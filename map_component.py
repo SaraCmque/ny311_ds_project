@@ -36,17 +36,17 @@ def render_map_section(df_all):
     st.markdown("""
     <style>
     .metric-card {
-        background: #1e2235; border: 1px solid #2e3250;
-        border-radius: 10px; padding: 14px 18px; text-align: center; color: #e0e4f0;
+        background: #f0f2f6; border: 1px solid #d0d4e0;
+        border-radius: 10px; padding: 14px 18px; text-align: center; color: #1a1a2e;
     }
-    .metric-card .val { font-size: 1.8rem; font-weight: 700; color: #7c9cfc; }
-    .metric-card .lbl { font-size: 0.75rem; color: #8891b3; margin-top: 2px;
+    .metric-card .val { font-size: 1.8rem; font-weight: 700; color: #2B6CB0; }
+    .metric-card .lbl { font-size: 0.75rem; color: #555e7a; margin-top: 2px;
                         text-transform: uppercase; letter-spacing: .05em; }
     .legend-card {
-        background: #1e2235; border: 1px solid #2e3250;
-        border-radius: 10px; padding: 16px 18px; color: #e0e4f0; margin-top: 0;
+        background: #f0f2f6; border: 1px solid #d0d4e0;
+        border-radius: 10px; padding: 16px 18px; color: #1a1a2e; margin-top: 0;
     }
-    .legend-card h4 { margin: 0 0 10px 0; font-size: .8rem; color: #8891b3;
+    .legend-card h4 { margin: 0 0 10px 0; font-size: .8rem; color: #555e7a;
                       text-transform: uppercase; letter-spacing: .06em; }
     .leg-row { display:flex; align-items:center; gap:8px; margin:5px 0; font-size:.82rem; }
     .dot { width:11px; height:11px; border-radius:50%; flex-shrink:0; }
