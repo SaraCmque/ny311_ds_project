@@ -120,6 +120,23 @@ def render_map_section(df_all):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── Riesgo por Distrito ──
+    st.subheader("Tasa de Incumplimiento por Distrito")
+    import plotly.express as px
+    COLOR_FOCO = "#C0292B"
+    COLOR_NEUTRO = "#718096"
+    df_boro = df_all.groupby('Borough')['target'].mean().reset_index().sort_values('target')
+    fig_boro = px.bar(df_boro, x='target', y='Borough', orientation='h')
+    fig_boro.update_traces(marker_color=[COLOR_FOCO if r == df_boro['target'].max() else COLOR_NEUTRO for r in df_boro['target']])
+    fig_boro.update_layout(
+        plot_bgcolor="white", xaxis_tickformat=".0%",
+        xaxis_title="Tasa de Incumplimiento de SLA",
+        yaxis_title="Distrito Administrativo"
+    )
+    st.plotly_chart(fig_boro, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
     # ── Renderizado del Mapa Plotly ──
     BUBBLE_SIZE = 9
     df = df.copy()
