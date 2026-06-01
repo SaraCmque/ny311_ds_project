@@ -100,9 +100,24 @@ def render_map_section(df_all):
     if borough_active:
         df = df[df["Borough"] == borough_active]
 
-    # ── MÓDULO VISUAL: Métricas ──
+    # ── MÓDULO VISUAL: Riesgo por Distrito ──
     st.markdown("## 🗺️ Mapa Geográfico de Quejas — Capa Gold")
 
+    import plotly.express as px
+    COLOR_FOCO = "#C0292B"
+    COLOR_NEUTRO = "#718096"
+    df_boro = df_all.groupby('Borough')['target'].mean().reset_index().sort_values('target')
+    fig_boro = px.bar(df_boro, x='target', y='Borough', orientation='h')
+    fig_boro.update_traces(marker_color=[COLOR_FOCO if r == df_boro['target'].max() else COLOR_NEUTRO for r in df_boro['target']])
+    fig_boro.update_layout(
+        plot_bgcolor="white", xaxis_tickformat=".0%",
+        xaxis_title="Tasa de Incumplimiento de SLA",
+        yaxis_title="Distrito Administrativo"
+    )
+    st.subheader("Tasa de Incumplimiento por Distrito")
+    st.plotly_chart(fig_boro, use_container_width=True)
+
+    # ── Métricas ──
     c1, c2, c3, c4 = st.columns(4)
     total_pen = df[df["penalty_charged"] > 0]["penalty_charged"].sum() if "penalty_charged" in df.columns else 0
     pct_inc = (df["target"] == 1).mean() * 100 if len(df) and "target" in df.columns else 0
@@ -117,23 +132,6 @@ def render_map_section(df_all):
             f"<div class='metric-card'><div class='val'>{val}</div><div class='lbl'>{lbl}</div></div>",
             unsafe_allow_html=True,
         )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Riesgo por Distrito ──
-    st.subheader("Tasa de Incumplimiento por Distrito")
-    import plotly.express as px
-    COLOR_FOCO = "#C0292B"
-    COLOR_NEUTRO = "#718096"
-    df_boro = df_all.groupby('Borough')['target'].mean().reset_index().sort_values('target')
-    fig_boro = px.bar(df_boro, x='target', y='Borough', orientation='h')
-    fig_boro.update_traces(marker_color=[COLOR_FOCO if r == df_boro['target'].max() else COLOR_NEUTRO for r in df_boro['target']])
-    fig_boro.update_layout(
-        plot_bgcolor="white", xaxis_tickformat=".0%",
-        xaxis_title="Tasa de Incumplimiento de SLA",
-        yaxis_title="Distrito Administrativo"
-    )
-    st.plotly_chart(fig_boro, use_container_width=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -198,14 +196,14 @@ def render_map_section(df_all):
     zoom = 12 if borough_active else 10
 
     layout = go.Layout(
-        map=dict(style="carto-darkmatter", center=dict(lat=map_lat, lon=map_lon), zoom=zoom),
+        map=dict(style="carto-positron", center=dict(lat=map_lat, lon=map_lon), zoom=zoom),
         legend=dict(
-            title=dict(text="Agencia", font=dict(color="#8891b3", size=12)),
-            bgcolor="#1e2235", bordercolor="#2e3250", borderwidth=1,
-            font=dict(color="#e0e4f0", size=11),
+            title=dict(text="Agencia", font=dict(color="#555e7a", size=12)),
+            bgcolor="rgba(255,255,255,0.9)", bordercolor="#d0d4e0", borderwidth=1,
+            font=dict(color="#1a1a2e", size=11),
             x=0.01, y=0.99, xanchor="left", yanchor="top",
         ),
-        paper_bgcolor="#0f1117", plot_bgcolor="#0f1117",
+        paper_bgcolor="white", plot_bgcolor="white",
         margin=dict(l=0, r=0, t=0, b=0), height=600,
     )
 
@@ -225,8 +223,8 @@ def render_map_section(df_all):
                 agency_html += f"""
     <div class='leg-row'>
       <div class='dot' style='background:{col_hex}'></div>
-      <span style='font-size:.8rem;color:#e0e4f0;flex:1'>{ag}</span>
-      <span style='font-size:.75rem;color:#8891b3'>{cnt}</span>
+      <span style='font-size:.8rem;color:#1a1a2e;flex:1'>{ag}</span>
+      <span style='font-size:.75rem;color:#555e7a'>{cnt}</span>
     </div>"""
         agency_html += "</div>"
         st.markdown(agency_html, unsafe_allow_html=True)
