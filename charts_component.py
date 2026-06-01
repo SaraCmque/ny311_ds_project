@@ -23,18 +23,8 @@ def render_dynamic_charts():
     st.title("🎯 Dashboard de Auditoría Operativa y Riesgo Legal")
     st.markdown("---")
 
-    # 2. KPIs GLOBALES
-    total_casos = len(df_work)
-    casos_vencidos = len(df_overdue)
-    porcentaje_negligencia = (casos_vencidos / total_casos) if total_casos > 0 else 0
+    # 2. PROCESAMIENTO ADICIONAL
     riesgo_total_usd = df_overdue['estimated_liability_usd'].sum()
-
-    col_k1, col_k2, col_k3 = st.columns(3)
-    col_k1.metric("Total Reportes", f"{total_casos:,}")
-    col_k2.metric("Índice de Negligencia", f"{porcentaje_negligencia:.1%}", delta="Fuera de SLA", delta_color="inverse")
-    col_k3.metric("Pasivo Legal Riesgo", f"${riesgo_total_usd/1e6:.1f}M USD", delta="Costo Estimado")
-
-    st.divider()
 
     # 3. DISTRIBUCIÓN: El Muro Legal
     st.subheader("1. Distribución de Tiempos y Límite Legal")
