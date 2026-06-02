@@ -115,8 +115,6 @@ test_raw  = aplicar_diccionario(test_raw)
 
 # ═══════════════════════════════════════════════════════════════════
 # BLOQUE 5 — FEATURES TEMPORALES
-#   MEJORA: eliminamos mes_sen/mes_cos (dataset solo 4 meses, ruido).
-#           Mantenemos solo hora y día de semana cíclicos + trimestre.
 # ═══════════════════════════════════════════════════════════════════
 print("\n5. Features temporales...")
 
@@ -159,8 +157,6 @@ test_raw  = agregar_interacciones(test_raw)
 
 # ═══════════════════════════════════════════════════════════════════
 # BLOQUE 7 — FEATURES GEOESPACIALES (calculadas SOLO en train)
-#   Sin cambios respecto al P1: distancia a centroide + densidad ZIP 30d.
-#   La densidad usa rangeBetween(-30,-1) → ya es correcta (solo mira atrás).
 # ═══════════════════════════════════════════════════════════════════
 print("7. Features geoespaciales...")
 
@@ -275,7 +271,7 @@ val_raw   = unir_stats(val_raw)
 test_raw  = unir_stats(test_raw)
 
 # ═══════════════════════════════════════════════════════════════════
-# BLOQUE 9b — ★ NUEVAS FEATURES DE PRESIÓN Y SATURACIÓN ★
+# BLOQUE 9b
 #
 #   presion_sla        = avg_dias_complaint_type / sla_days
 #       > 1 → ese tipo de queja históricamente tarda MÁS que su SLA
@@ -308,7 +304,7 @@ test_raw  = agregar_presion(test_raw)
 # BLOQUE 10 — CODIFICACIÓN CATEGÓRICA
 #
 #   BAJA CARDINALIDAD → StringIndexer (_idx) para árboles
-#   ★ ALTA CARDINALIDAD → OUT-OF-FOLD TARGET ENCODING en train ★
+#   ALTA CARDINALIDAD → OUT-OF-FOLD TARGET ENCODING en train 
 #
 #   El OOF encoding evita que cada fila de train vea su propio target.
 #   Para val/test se usa el mean(target) de TODO train (sin leakage,
@@ -384,7 +380,6 @@ print(f"   OOF Target Encoding: {cols_alta_cardinalidad}")
 
 # ═══════════════════════════════════════════════════════════════════
 # BLOQUE 11 — SELECCIÓN FINAL DE COLUMNAS
-#   MEJORA: lista más limpia, sin redundancias, con las nuevas features.
 # ═══════════════════════════════════════════════════════════════════
 print("\n11. Seleccionando columnas finales...")
 
