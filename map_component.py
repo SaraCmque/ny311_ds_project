@@ -107,8 +107,32 @@ def render_map_section(df_all):
     COLOR_FOCO = "#C0292B"
     COLOR_NEUTRO = "#718096"
     df_boro = df_all.groupby('Borough')['target'].mean().reset_index().sort_values('target')
+
+    # Datos para el insight dinámico
+    worst_boro = df_boro.loc[df_boro['target'].idxmax(), 'Borough']
+    worst_rate = df_boro['target'].max()
+    best_boro  = df_boro[df_boro['Borough'] != 'UNSPECIFIED'].loc[df_boro[df_boro['Borough'] != 'UNSPECIFIED']['target'].idxmin(), 'Borough']
+    best_rate  = df_boro[df_boro['Borough'] == best_boro]['target'].values[0]
+    gap        = worst_rate - best_rate
+
     fig_boro = px.bar(df_boro, x='target', y='Borough', orientation='h')
     fig_boro.update_traces(marker_color=[COLOR_FOCO if r == df_boro['target'].max() else COLOR_NEUTRO for r in df_boro['target']])
+
+    # Anotación sobre la barra más crítica
+    fig_boro.add_annotation(
+        x=worst_rate,
+        y=worst_boro,
+        text=f"⚠️ {worst_rate:.1%} sin respuesta a tiempo",
+        showarrow=True,
+        arrowhead=2,
+        arrowcolor=COLOR_FOCO,
+        ax=-140, ay=0,
+        bgcolor="white",
+        bordercolor=COLOR_FOCO,
+        borderwidth=1.5,
+        font=dict(color=COLOR_FOCO, size=12),
+    )
+
     fig_boro.update_layout(
         plot_bgcolor="white", xaxis_tickformat=".0%",
         xaxis_title="Tasa de Incumplimiento de SLA",
@@ -116,6 +140,25 @@ def render_map_section(df_all):
     )
     st.subheader("Tasa de Incumplimiento por Distrito")
     st.plotly_chart(fig_boro, use_container_width=True)
+
+    # ── Insight narrativo ──
+    st.markdown(
+        f"""
+        <div style="background:#fff5f5;border-left:4px solid #C0292B;
+                    padding:14px 20px;border-radius:6px;margin-bottom:12px">
+            <b style="color:#C0292B;font-size:1.05rem">
+                📌 Insight: La brecha de inequidad territorial
+            </b><br>
+            <span style="color:#2d3748;font-size:0.95rem;line-height:1.6">
+                <b>{worst_boro.title()}</b> incumple en el <b>{worst_rate:.1%}</b> de los casos —
+                <b>{gap:.1%} más</b> que <b>{best_boro.title()}</b>, el distrito con mejor desempeño.<br>
+                Esto no es solo una estadística: el <b>lugar de residencia determina
+                la calidad del servicio público</b> que recibe cada ciudadano.
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # ── Métricas ──
     c1, c2, c3, c4 = st.columns(4)
