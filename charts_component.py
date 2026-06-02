@@ -50,8 +50,31 @@ def render_dynamic_charts():
 
     st.subheader("Picos de Riesgo por Horario")
     df_hour = df_work.groupby('created_hour')['is_overdue_official'].mean().reset_index()
+
+    # Detectar hora pico y definir rango ±1h
+    peak_hour = int(df_hour.loc[df_hour['is_overdue_official'].idxmax(), 'created_hour'])
+    peak_val = df_hour['is_overdue_official'].max()
+    range_start = max(0, peak_hour - 1)
+    range_end = min(23, peak_hour + 1)
+
     fig_hour = px.area(df_hour, x='created_hour', y='is_overdue_official')
     fig_hour.update_traces(line_color=COLOR_FOCO, fillcolor="rgba(192, 41, 43, 0.2)")
+
+    # Resaltar rango pico
+    fig_hour.add_vrect(
+        x0=range_start, x1=range_end,
+        fillcolor="rgba(192, 41, 43, 0.25)", line_width=0,
+    )
+    fig_hour.add_vline(x=peak_hour, line_dash="dash", line_color=COLOR_FOCO, line_width=2)
+    fig_hour.add_annotation(
+        x=peak_hour, y=peak_val,
+        text=f"⚠️ Ventana crítica: {range_start}h–{range_end}h<br>{peak_val:.1%} de incumplimiento",
+        showarrow=True, arrowhead=2, arrowcolor=COLOR_FOCO,
+        ax=60, ay=-40,
+        bgcolor="white", bordercolor=COLOR_FOCO, borderwidth=1.5,
+        font=dict(color=COLOR_FOCO, size=12),
+    )
+
     fig_hour.update_layout(
         plot_bgcolor="white", yaxis_tickformat=".0%",
         xaxis_title="Hora de Creación del Reporte (0–23 h)",
