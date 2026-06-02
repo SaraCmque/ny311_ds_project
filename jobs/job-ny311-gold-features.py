@@ -15,17 +15,6 @@ from pyspark.ml import Pipeline
 from pyspark.ml.feature import StringIndexer, OneHotEncoder
 
 # ═══════════════════════════════════════════════════════════════════
-# PROYECTO #2 — JOB DE FEATURES MEJORADO
-#
-# MEJORAS vs Proyecto #1:
-#   1. OUT-OF-FOLD target encoding en train (elimina leakage intra-train)
-#   2. Feature de PRESIÓN SLA (avg_dias / sla_days)
-#   3. Features de SATURACIÓN operativa (volumen relativo al SLA)
-#   4. Sin features redundantes desde el origen (no creamos las 3 _te
-#      de interacción que eran casi idénticas a Complaint Type_te)
-#   5. Guardamos los MAPEOS exactos (turno_idx, etc.) en S3 para inferencia
-#   6. Lee de splits_v2 (temporal) y escribe en gold_v2
-# ═══════════════════════════════════════════════════════════════════
 if "--JOB_NAME" in sys.argv:
     args = getResolvedOptions(sys.argv, ["JOB_NAME"])
 else:
