@@ -4,3 +4,11 @@ plotly
 boto3
 s3fs
 pyarrow
+numpy
+scikit-learn
+xgboost
+imbalanced-learn
+shap
+matplotlib
+seaborn
+joblib
